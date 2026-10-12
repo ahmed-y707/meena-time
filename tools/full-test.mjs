@@ -664,12 +664,11 @@ await ef.locator('.photo input[type=file]').setInputFiles(`${UD}/p.png`); await 
 await btn(ef, 'حفظ').click(); await p.waitForTimeout(300); await okMsg()
 await ew.locator('tbody tr', { hasText: '1004' }).dblclick(); await p.waitForTimeout(250); ef = win('تعديل موظف')
 check('employee photo: saved and shown', (await ef.locator('.photo img').count()) === 1); await snap('v2-employee-photo')
-// shift change from a date: 1002 → «مسائي» from 2026-09-21 (no timings → off)
+// shift change: 1002 → «مسائي» for every unposted day (no timings → off)
 await closeWin(ef)
 await ew.locator('tbody tr', { hasText: '1002' }).dblclick(); await p.waitForTimeout(250); ef = win('تعديل موظف')
 await ef.locator('[data-f=shift_group_id]').selectOption({ label: 'مسائي' }); await btn(ef, 'حفظ').click(); await p.waitForTimeout(200)
-check('shift change: asks the start date', /يبدأ الدوام الجديد من/.test(await dlgText()))
-await p.locator('#sf').fill('2026-09-21'); await p.locator('.dlg').getByRole('button', { name: 'موافق' }).click(); await p.waitForTimeout(300); await okMsg()
+check('shift change: no start-date dialog (Apex)', (await p.locator('#sf').count()) === 0); await okMsg()
 await closeWin(ew)
 // punches for the new shifts
 fs.writeFileSync(`${UD}/att2.dat`, [
@@ -699,8 +698,8 @@ check('split shift: worked 3:55 + 3:40 = 07:35', cell('1004:2026-09-19', 7) === 
 check('night shift: 21:58 → 06:02 is one present day', cell('1005:2026-09-19', 2) === '21:58' && cell('1005:2026-09-19', 3) === '06:02' && cell('1005:2026-09-19', 7) === '08:04', D['1005:2026-09-19']?.join('|'))
 check('night shift: next day does not reuse the 06:02 punch', cell('1005:2026-09-20', 8) === 'غياب', D['1005:2026-09-20']?.join('|'))
 check('open shift: 6h worked of 8h → 02:00 owed shows as تأخير', cell('1006:2026-09-19', 4) === '02:00' && cell('1006:2026-09-19', 7) === '06:00', D['1006:2026-09-19']?.join('|'))
-check('shift history: 1002 before the change still on the old shift (working day → absent, not the new shift\'s day off)', cell('1002:2026-09-19', 8) === 'غياب', D['1002:2026-09-19']?.join('|'))
-check('shift history: 1002 from 2026-09-21 on the new shift (no timings → off)', cell('1002:2026-09-21', 8) === 'عطلة إسبوعية', D['1002:2026-09-21']?.join('|'))
+check('shift change: 1002 earlier unposted days also on the new shift', cell('1002:2026-09-19', 8) === 'عطلة إسبوعية', D['1002:2026-09-19']?.join('|'))
+check('shift change: 1002 on 2026-09-21 on the new shift (no timings → off)', cell('1002:2026-09-21', 8) === 'عطلة إسبوعية', D['1002:2026-09-21']?.join('|'))
 await snap('v2-detailed')
 // Excel + PDF
 await btn(rw, 'Excel').click(); await p.waitForTimeout(800); await okMsg()

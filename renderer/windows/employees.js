@@ -180,8 +180,7 @@ function openEmployeeForm(emp, onSaved, prefill = {}) {
         <label>المجموعة</label>${sel('group_id', opts('employee_groups')())}
         <label>المشروع</label>${sel('project_id', opts('projects')())}
         <label>الدوام *</label>${sel('shift_group_id', opts('shift_groups')())}
-      </div>${emp ? `<div class="hist"><b>سجل الدوام:</b> ${DB.all('SELECT s.from_date, g.name_ar FROM employee_shifts s LEFT JOIN shift_groups g ON g.id = s.group_id WHERE s.employee_id = ? ORDER BY s.from_date', [emp.id])
-        .map((h) => `${UI.esc(h.name_ar)} من ${h.from_date}`).join(' ← ') || '—'}</div>` : ''}</fieldset>
+      </div></fieldset>
       <fieldset><legend>معلومات شخصية</legend><div class="grid2">
         <label>الجنس</label>${sel('gender', [['ذكر', 'ذكر'], ['أنثى', 'أنثى']])}
         <label>الجنسية</label>${sel('nationality_id', listOptions('nationality')())}
@@ -243,19 +242,8 @@ async function saveEmployee(emp, v) {
   if (!v.shift_group_id) return void UI.message('الدوام مطلوب')
   if (v.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email)) return void UI.message('البريد الالكتروني غير صحيح')
   if (!emp && !(await Trial.canAddEmployee())) return null
-  // a shift change applies from a chosen date; earlier days keep the old shift
-  let shiftFrom = null
-  if (emp && String(v.shift_group_id) !== String(emp.shift_group_id)) {
-    shiftFrom = await UI.dialog({
-      head: 'تغيير الدوام', width: 420,
-      bodyHtml: `<div class="fields" style="grid-template-columns:150px 1fr"><label>يبدأ الدوام الجديد من</label><input type="date" id="sf" value="${Engine.today()}"></div>
-        <div style="font-size:12px;padding:0 4px">الأيام قبل هذا التاريخ تُحسب على الدوام السابق.</div>`,
-      buttons: [{ label: 'موافق', icon: 'ok', onClick: (d) => { const x = d.root.querySelector('#sf').value; x ? d.close(x) : d.error('اختر التاريخ') } },
-        { label: 'الغاء', icon: 'cancel', onClick: (d) => d.close(null) }],
-    })
-    if (!shiftFrom) return null
-    if (Engine.isPosted(shiftFrom)) return void UI.message('هذا التاريخ داخل فترة مرحّلة — اختر تاريخاً بعدها')
-  }
+  // like Apex, an employee has one shift: a change applies to every day not yet posted («ترحيل»)
+  const shiftChanged = emp && String(v.shift_group_id) !== String(emp.shift_group_id)
   const F = ['code', 'name_ar', 'name_en', 'status', 'job_id', 'department_id', 'section_id', 'group_id', 'project_id', 'shift_group_id',
     'hire_date', 'gender', 'nationality_id', 'national_id', 'religion', 'birth_date', 'mobile', 'email', 'address',
     'ot_deduct_late', 'ot_before', 'ot_after', 'ot_holidays', 'no_punch_out', 'attendance_method', 'photo', 'task_id']
@@ -264,7 +252,10 @@ async function saveEmployee(emp, v) {
     DB.run('BEGIN')
     if (emp) {
       DB.run(`UPDATE employees SET ${F.map((f) => `${f} = ?`).join(', ')} WHERE id = ?`, [...vals, emp.id])
-      if (shiftFrom) DB.run('INSERT OR REPLACE INTO employee_shifts (employee_id, group_id, from_date) VALUES (?, ?, ?)', [emp.id, +v.shift_group_id, shiftFrom])
+      if (shiftChanged) {
+        DB.run('DELETE FROM employee_shifts WHERE employee_id = ?', [emp.id])
+        DB.run('INSERT INTO employee_shifts (employee_id, group_id, from_date) VALUES (?, ?, ?)', [emp.id, +v.shift_group_id, '2000-01-01'])
+      }
     } else {
       DB.run(`INSERT INTO employees (${F.join(', ')}) VALUES (${F.map(() => '?').join(', ')})`, vals)
       const id = DB.one('SELECT last_insert_rowid() AS id').id
@@ -275,7 +266,7 @@ async function saveEmployee(emp, v) {
     DB.run('ROLLBACK')
     return void UI.message(/UNIQUE/.test(err?.message ?? err) ? `كود الموظف ${v.code} مستخدم لموظف آخر` : `تعذّر الحفظ: ${err?.message ?? err}`)
   }
-  DB.audit(emp ? 'تعديل موظف' : 'إضافة موظف', `${v.code} — ${v.name_ar}`, shiftFrom ? `دوام جديد من ${shiftFrom}` : '')
+  DB.audit(emp ? 'تعديل موظف' : 'إضافة موظف', `${v.code} — ${v.name_ar}`, shiftChanged ? 'تغيير الدوام' : '')
   await DB.flush()
   UI.message(emp ? 'تم الحفظ' : 'تمت إضافة الموظف')
   return v.code
