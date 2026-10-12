@@ -243,6 +243,8 @@ const Engine = {
     r.out = lastOut?.out ?? null
     r.late = r.windows.reduce((s, x) => s + x.late, 0)
     r.early = r.windows.reduce((s, x) => s + x.early, 0)
+    // a working day with any punch at all is attended («مداوم»), even when no punch fell in a period's window
+    if (!anyIn && base.punches.length) return { ...r, in: base.punches[0], out: base.punches.length > 1 ? base.punches.at(-1) : null, kind: 'present', status: 'حضور' }
     if (!anyIn) return { ...r, kind: anyWaiting ? 'waiting' : 'absent', status: anyWaiting ? 'في الانتظار' : 'غياب' }
     const w0 = windows[0], wl = windows.at(-1)
     // «يحتسب الاضافي قبل/بعد الدوام N بالدقائق»: shorter early arrival / late stay → no overtime

@@ -195,7 +195,7 @@ ipcMain.handle('file:pdf', async (e, name, html) => {
   const w = new BrowserWindow({ show: false, webPreferences: { javascript: false } })
   try {
     await w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-    const pdf = await w.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { marginType: 'custom', top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 } })
+    const pdf = await w.webContents.printToPDF({ pageSize: 'A4', landscape: html.includes('data-landscape'), printBackground: true, margins: { marginType: 'custom', top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 } })
     fs.writeFileSync(fp, pdf)
     return { ok: true, path: fp }
   } catch (err) {
@@ -255,7 +255,7 @@ ipcMain.handle('print:html', async (e, html) => {
   const w = new BrowserWindow({ show: false, webPreferences: { javascript: false } })
   try {
     await w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-    return await new Promise((resolve) => w.webContents.print({ printBackground: true }, (ok, reason) =>
+    return await new Promise((resolve) => w.webContents.print({ printBackground: true, landscape: html.includes('data-landscape') }, (ok, reason) =>
       resolve(ok || /cancel/i.test(reason || '') ? { ok } : { ok: false, error: `تعذّرت الطباعة (${reason || 'لا توجد طابعة'})` })))
   } finally {
     w.destroy()

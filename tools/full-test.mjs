@@ -86,7 +86,7 @@ check('caption: version matches package.json', (await p.locator('#caption-text')
 check('menubar: 7 menus', (await p.locator('#menubar .menu').count()) === 7)
 
 // every menu opens and lists its items
-for (const [m, n] of [['ملف', 2], ['البيانات الأساسية', 8], ['الإجراءات', 9], ['التقارير', 11], ['الاعدادات', 6], ['ادوات', 1], ['مساعده', 3]]) {
+for (const [m, n] of [['ملف', 2], ['البيانات الأساسية', 8], ['الإجراءات', 9], ['التقارير', 14], ['الاعدادات', 6], ['ادوات', 1], ['مساعده', 3]]) {
   await p.locator('#menubar .menu > button', { hasText: m }).first().click(); await p.waitForTimeout(150)
   check(`menu «${m}» has ${n} items`, (await p.locator('.menu.open .drop button').count()) === n, `got ${await p.locator('.menu.open .drop button').count()}`)
   if (m === 'البيانات الأساسية' || m === 'الإجراءات' || m === 'التقارير') await snap(`menu-${m}`)
@@ -479,10 +479,10 @@ await w.locator('#pm-at').fill('09:00')
 await btn(w, 'حفظ').click(); await p.waitForTimeout(250); await okMsg(); check('permissions: saved', (await w.locator('.list tbody tr').count()) === 1)
 check('permissions: late = start of the day → توقيت الدخول', /09:00/.test(await w.locator('.list tbody tr').first().textContent()) && (await w.locator('#pm-at').inputValue()) === '09:00'); await closeWin(w)
 
-// ── 6. reports (all 11) ───────────────────────────────────
+// ── 6. reports (all 14) ───────────────────────────────────
 const detailedExpect = { '2026-09-19': 'حضور', '2026-09-20': 'حضور متأخر', '2026-09-21': 'حضور', '2026-09-22': 'إجازة', '2026-09-23': 'عطلة رسمية', '2026-09-24': 'عطلة إسبوعية' }
 const reports = ['مواعيد العمل', 'الموظفون', 'الحركات الغير مكتملة', 'التأخير عن بداية الدوام اليومي', 'التأخير عن الدوام خلال فترة', 'أجازات الموظفين',
-  'الحضور والانصراف تفصيلي', 'الحضور والانصراف إجمالي', 'الغياب خلال فترة', 'حالة اليوم', 'الحضور والانصراف بالحركات']
+  'الحضور والانصراف تفصيلي', 'الحضور والانصراف إجمالي', 'الغياب خلال فترة', 'حالة اليوم', 'بيان تأخير الموظفين', 'تأخير وإضافي الدوام', 'الحضور والانصراف بالحركات', 'أذونات الموظفين']
 const trialOpen = ['الحضور والانصراف تفصيلي', 'الحضور والانصراف إجمالي', 'حالة اليوم', 'الحضور والانصراف بالحركات']
 for (const r of reports) {
   await menu('التقارير', r)
@@ -709,6 +709,57 @@ await btn(rw, 'PDF').click(); await p.waitForTimeout(3000); const pdfMsg = await
 const pdf = fs.readFileSync(`${UD}/manual-backup.sqlite`)
 check('export: PDF file generated', pdf.slice(0, 4).toString() === '%PDF' && pdf.length > 5000, pdfMsg)
 await closeWin(rw)
+// «حالة اليوم» says مداوم on an attended day; «عدد ساعات الدوام» = the day's scheduled hours (none on a day off)
+{
+  ;[rw, D] = await detailed()
+  const cells = await rw.locator('tr[data-emp="1001"]').evaluateAll((trs) => Object.fromEntries(trs.map((tr) => [tr.dataset.date, [...tr.children].map((td) => td.textContent.trim())])))
+  const sched = await p.evaluate(() => Object.fromEntries(Engine.compute({ from: '2026-09-19', to: '2026-09-24' }).filter((r) => r.emp.code === '1001').map((r) => [r.date, r.scheduled ? Engine.hm(r.scheduled) : ''])))
+  const c19 = cells['2026-09-20'] || [], c24 = cells['2026-09-24'] || []
+  check('detailed: attended day → حالة اليوم «مداوم»', c19.at(-1) === 'مداوم', c19.join('|'))
+  check('detailed: عدد ساعات الدوام = scheduled hours', c19.at(-5) === sched['2026-09-20'] && /^\d\d:\d\d$/.test(c19.at(-5)), `${c19.at(-5)} vs ${sched['2026-09-20']}`)
+  check('detailed: day off → عطلة أسبوعية, no duty hours', c24.at(-1) === 'عطلة أسبوعية' && c24.at(-5) === '', c24.join('|'))
+  await closeWin(rw)
+  check('engine: a single punch outside every period still counts as attended', await p.evaluate(async () => {
+    const code = '1001', d = '2026-09-27'
+    const before = Engine.compute({ from: d, to: d }).find((r) => r.emp.code === code)
+    DB.run('INSERT INTO punches (emp_code, ts, source) VALUES (?, ?, ?)', [code, `${d} 02:00:00`, 'manual'])
+    const after = Engine.compute({ from: d, to: d }).find((r) => r.emp.code === code)
+    DB.run('DELETE FROM punches WHERE emp_code = ? AND ts = ?', [code, `${d} 02:00:00`])
+    return before.kind === 'absent' && after.kind === 'present'
+  }))
+}
+// the three restored Apex reports
+await menu('التقارير', 'بيان تأخير الموظفين'); rw = repWin('بيان تأخير الموظفين')
+await rw.locator('#r-month').selectOption('9'); await rw.locator('#r-year').fill('2026'); await btn(rw, 'موافق').click(); await p.waitForTimeout(300)
+{
+  const row = rw.locator('table.month-grid tr[data-emp="1001"]')
+  const kinds = await row.locator('td.c').evaluateAll((tds) => tds.map((td) => td.dataset.kind || ''))
+  check('بيان تأخير الموظفين: الرقم · الاسم · 31 days · التوقيع', (await rw.locator('table.month-grid thead th').count()) === 34 && kinds.length === 31)
+  check('بيان تأخير الموظفين: 1001 day colours by status', kinds[19] === 'present' && kinds[21] === 'leave' && kinds[22] === 'holiday' && kinds[23] === 'off', kinds.slice(18, 24).join('|'))
+  check('بيان تأخير الموظفين: 8-colour key incl. مداوم', (await rw.locator('.legend span').count()) === 8 && /مداوم/.test(await rw.locator('.legend').textContent()))
+  check('بيان تأخير الموظفين: printed landscape', (await rw.locator('.report-out [data-landscape]').count()) === 1)
+  await snap('v2-late-statement'); await closeWin(rw)
+}
+await menu('التقارير', 'تأخير وإضافي الدوام'); rw = repWin('تأخير وإضافي الدوام')
+await rw.locator('#r-from').fill('2026-09-19'); await rw.locator('#r-to').fill('2026-09-24'); await btn(rw, 'موافق').click(); await p.waitForTimeout(300)
+{
+  const blk = rw.locator('.rep-emp', { hasText: 'مستشفى' }).or(rw.locator('.rep-emp')).first()
+  const head = await rw.locator('.rep-emp').first().locator('thead').textContent()
+  check('تأخير وإضافي الدوام: title + الشفت columns', /تقرير تأخير وإضافي الدوام/.test(await rw.locator('.rep-title').textContent()) && /الشفت الأول/.test(head) && /ساعات العمل/.test(head))
+  const r20 = await rw.locator('tr[data-emp="1001"][data-date="2026-09-20"] td').allTextContents()
+  check('تأخير وإضافي الدوام: 1001 on 09-20 late+early 00:50 in الشفت الأول', r20[2] === '00:50', r20.join('|'))
+  check('تأخير وإضافي الدوام: الإجمالي row', /الإجمالي/.test(await blk.locator('tfoot').first().textContent()))
+  await snap('v2-late-over'); await closeWin(rw)
+}
+await menu('التقارير', 'أذونات الموظفين'); rw = repWin('أذونات الموظفين')
+await rw.locator('#r-from').fill('2026-09-01'); await rw.locator('#r-to').fill('2026-09-30'); await btn(rw, 'موافق').click(); await p.waitForTimeout(300)
+{
+  const rows = await rw.locator('.report-out tbody tr[data-date]').evaluateAll((trs) => trs.map((tr) => [tr.dataset.emp, ...[...tr.children].map((td) => td.textContent.trim())]))
+  const r = rows.find((x) => /2026.09.19/.test(x[2]) && x[4] === '09:00')
+  check('أذونات الموظفين: the late-arrival permission row (اليوم · التاريخ · البدايه · النهايه · … · حالة اليوم)', !!r && r[1] === 'السبت' && r[3] === '08:00' && r[6] === '01:00' && !!r[10], JSON.stringify(rows))
+  check('أذونات الموظفين: Apex columns', /البدايه[\s\S]*النهايه[\s\S]*الدوام[\s\S]*الإذن[\s\S]*التأخير[\s\S]*الإضافي[\s\S]*ساعات العمل[\s\S]*حالة اليوم/.test(await rw.locator('.rep-emp thead').first().textContent()))
+  await snap('v2-permissions-report'); await closeWin(rw)
+}
 // posting freezes the day: post 19..20, then move «صباحي م» check-in to 07:00
 await menu('الإجراءات', 'ترحيل الحركات'); w = win('ترحيل الحركات وحساب ساعات العمل'); await w.locator('#pw-from').fill('2026-09-19'); await w.locator('#pw-to').fill('2026-09-20')
 await w.locator('#pw-go').click(); await p.waitForTimeout(300); await okMsg(); await closeWin(w)

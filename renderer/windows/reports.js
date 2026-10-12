@@ -24,7 +24,7 @@ function empInfo() {
   return (e) => ({ job: lists[e.job_id] || '', dep: deps[e.department_id] || '', sec: deps[e.section_id] || '', project: projects[e.project_id] || '', shift: shifts[e.shift_group_id] || '' })
 }
 // Apex «حالة اليوم» wording
-function dayStatus(r, present = '') {
+function dayStatus(r, present = 'مداوم') {
   if (r.kind === 'present') return present
   if (r.kind === 'absent') return 'غائب'
   if (r.kind === 'waiting') return 'في الانتظار'
@@ -33,8 +33,8 @@ function dayStatus(r, present = '') {
   return 'عطلة أسبوعية'
 }
 const redKinds = new Set(['absent', 'off', 'holiday'])
-// «عدد ساعات الدوام» = time worked inside the schedule (total worked minus overtime)
-const dutyMin = (r) => Math.max(0, (r.worked || 0) - (r.ot || 0))
+// «عدد ساعات الدوام» = the hours the employee is scheduled to work that day (0 on days off)
+const dutyMin = (r) => (['present', 'absent', 'waiting'].includes(r.kind) ? r.scheduled || 0 : 0)
 const periodsOf = (r) => (r.windows?.length ? r.windows : r.in != null ? [{ in: r.in, out: r.out }] : [])
 
 const table = (head, rows, foot) => `<table class="rep"><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
@@ -43,9 +43,9 @@ const table = (head, rows, foot) => `<table class="rep"><thead><tr>${head.map((h
 // Apex: «خلال الفترة من» … «إلى» … in the bordered box under the title
 const period = (f) => `<span class="per"><b>خلال الفترة من</b> <span dir="ltr">${f.from}</span></span><span class="per"><b>إلى</b> <span dir="ltr">${f.to}</span></span>`
 // Apex «التفصيلي» employee block: 4 columns × 2 rows (رقم/اسم · الوظيفه/الدوام · الإدارة/القسم · الفترة)
-const empSub = (e, I, f) => `<div class="rep-sub emp-grid">
-  <span><b>رقم الموظف:</b> ${esc(e.code)}</span><span><b>الوظيفه :</b> ${esc(I.job)}</span><span><b>الإدارة:</b> ${esc(I.dep)}</span><span><b>خلال الفترة من:</b> <span dir="ltr">${f.from}</span></span>
-  <span><b>اسم الموظف:</b> ${esc(e.name_ar)}</span><span><b>الــدوام:</b> ${esc(I.shift)}</span><span><b>القســـم:</b> ${esc(I.sec)}</span><span><b>إلـــى:</b> <span dir="ltr">${f.to}</span></span></div>`
+const empSub = (e, I, f, short = false) => `<div class="rep-sub emp-grid">
+  <span><b>${short ? 'الرقم' : 'رقم الموظف'}:</b> ${esc(e.code)}</span><span><b>الوظيفه :</b> ${esc(I.job)}</span><span><b>الإدارة:</b> ${esc(I.dep)}</span><span><b>${short ? 'من' : 'خلال الفترة من'}:</b> <span dir="ltr">${f.from}</span></span>
+  <span><b>${short ? 'الاسم' : 'اسم الموظف'}:</b> ${esc(e.name_ar)}</span><span><b>الــدوام:</b> ${esc(I.shift)}</span><span><b>القســـم:</b> ${esc(I.sec)}</span><span><b>إلـــى:</b> <span dir="ltr">${f.to}</span></span></div>`
 
 const REPORTS = {
   'مواعيد العمل': { noPeriod: true, build: () => {
@@ -152,12 +152,80 @@ const REPORTS = {
     return { html: `<div class="rep-sub"><span><b>${DAY_NAMES[Engine.DAY_INDEX(f.from)]}</b></span><span dir="ltr"><b>${f.from}</b></span></div>` +
       `<table class="rep"><thead>${head}</thead><tbody>${body || `<tr><td colspan="${11 + 2 * n}" class="empty">لا توجد بيانات</td></tr>`}</tbody></table>` }
   } },
-  // Apex «بيان تأخير الموظفين»: a month, one coloured cell per day (colours from «إعدادات النظام»)
+  // Apex «بيان تأخير الموظفين» (EmployeeLateStateReport, A4 landscape): الرقم · الاسم · 1…31 · التوقيع,
+  // each day cell filled with its status colour from «إعدادات النظام»; the legend sits in the page footer
+  'بيان تأخير الموظفين': { month: true, landscape: true, build: (f, S) => {
+    const C = S.colors
+    const perms = new Set(DB.all('SELECT employee_id, date FROM permissions WHERE date BETWEEN ? AND ?', [f.from, f.to]).map((p) => `${p.employee_id}|${p.date}`))
+    const colour = (r) => r.kind === 'absent' ? C.absent : r.kind === 'leave' ? C.leave : r.kind === 'holiday' ? C.holiday : r.kind === 'off' ? C.weekly
+      : perms.has(`${r.emp.id}|${r.date}`) ? C.permission : r.late ? C.late : r.early ? C.early : C.present
+    const ym = f.from.slice(0, 8)
+    const rows = byEmp(Engine.compute(f)).map((rs) => {
+      const byD = Object.fromEntries(rs.map((r) => [r.date, r]))
+      return `<tr data-emp="${esc(rs[0].emp.code)}"><td class="g">${esc(rs[0].emp.code)}</td><td class="g nm">${esc(rs[0].emp.name_ar)}</td>${Array.from({ length: 31 }, (_, i) => {
+        const r = byD[`${ym}${String(i + 1).padStart(2, '0')}`]
+        return `<td class="c" style="background:${r ? colour(r) : '#fff'}"${r ? ` data-kind="${r.kind}"` : ''}></td>` }).join('')}<td class="sig"></td></tr>`
+    }).join('')
+    const legend = [['holiday', 'عطلة رسمية'], ['permission', 'أذن'], ['leave', 'أجازة'], ['late', 'تأخير'], ['weekly', 'عطلة أسبوعية'], ['early', 'خروج مبكر'], ['absent', 'غياب'], ['present', 'مداوم']]
+    return { html: `<table class="rep month-grid"><thead><tr><th>الرقم</th><th>الاسم</th>${Array.from({ length: 31 }, (_, i) => `<th>${i + 1}</th>`).join('')}<th>التوقيع</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="34" class="empty">لا توجد بيانات</td></tr>'}</tbody></table>`,
+      foot: `<div class="legend">${legend.map(([k, l]) => `<span><i style="background:${C[k]}"></i>${l}</span>`).join('')}</div>`,
+      title: `بيان تأخير الموظفين لشهر ${MONTHS[+f.from.slice(5, 7) - 1]} ${f.from.slice(0, 4)} م` }
+  } },
+  // Apex «تقرير تأخير وإضافي الدوام» (LateOverShifts1A…4A by «عدد الورديات التي تظهر في التقارير»):
+  // per employee, م · التاريخ · each الشفت's التأخير (red) / الإضافي (green) · ساعات العمل, then الإجمالي
+  'تأخير وإضافي الدوام': { build: (f, S) => {
+    const n = +S.report_shifts || 4, I = empInfo()
+    const shiftNames = ['الشفت الأول', 'الشفت الثاني', 'الشفت الثالث', 'الشفت الرابع']
+    const blocks = byEmp(Engine.compute(f)).map((rs) => {
+      const e = rs[0].emp
+      const tot = Array.from({ length: n }, () => ({ late: 0, ot: 0 }))
+      const body = rs.map((r, i) => {
+        const ps = r.windows || []
+        return `<tr data-emp="${esc(e.code)}" data-date="${r.date}"><td>${i + 1}</td><td dir="ltr">${r.date}</td>${Array.from({ length: n }, (_, k) => {
+          const w = ps[k] || {}
+          const late = (w.late || 0) + (w.early || 0), ot = w.ot || 0
+          tot[k].late += late; tot[k].ot += ot
+          return `<td class="red">${hmOrBlank(late)}</td><td class="green">${hmOrBlank(ot)}</td>`
+        }).join('')}<td>${hmOrBlank(r.worked)}</td></tr>`
+      }).join('')
+      return `<div class="rep-emp">${empSub(e, I(e), f, true)}<table class="rep"><thead><tr><th colspan="2" class="blank"></th>${shiftNames.slice(0, n).map((s) => `<th colspan="2">${s}</th>`).join('')}<th></th></tr>
+        <tr><th>م</th><th>التاريخ</th>${'<th>التأخير</th><th>الإضافي</th>'.repeat(n)}<th>ساعات العمل</th></tr></thead><tbody>${body}</tbody>
+        <tfoot><tr><td colspan="2">الإجمالي</td>${tot.map((t) => `<td>${H(t.late)}</td><td>${H(t.ot)}</td>`).join('')}<td>${H(sum(rs, 'worked'))}</td></tr></tfoot></table></div>`
+    })
+    return { html: blocks.join('') || '<p class="empty">لا توجد بيانات</p>' }
+  } },
   // Apex «حركات الموظفين»: each day's punches
   'الحضور والانصراف بالحركات': { build: (f) => ({
     html: `<div class="rep-sub">${period(f)}</div>` + table(['كود الموظف', 'إسم الموظف', 'التاريخ', 'اليوم', 'الحركات', 'حالة اليوم'],
-      Engine.compute(f).filter((r) => r.punches.length || r.kind === 'absent').map((r) => [r.emp.code, r.emp.name_ar, r.date, DAY_NAMES[r.day], r.punches.map(H).join('  ·  '), dayStatus(r, r.status)])),
+      Engine.compute(f).filter((r) => r.punches.length || r.kind === 'absent').map((r) => [r.emp.code, r.emp.name_ar, r.date, DAY_NAMES[r.day], r.punches.map(H).join('  ·  '), dayStatus(r)])),
   }) },
+  // Apex «تقرير أذونات الموظفين» (PermReportA): per employee, one row per permission —
+  // اليوم · التاريخ · الإذن (البدايه / النهايه) · الدوام · الإذن · التأخير · الإضافي · ساعات العمل · حالة اليوم
+  'أذونات الموظفين': { build: (f) => {
+    const I = empInfo()
+    const groups = Object.fromEntries(DB.all('SELECT id, name_ar FROM employee_groups').map((g) => [g.id, g.name_ar]))
+    const perms = DB.all(`SELECT p.* FROM permissions p JOIN employees e ON e.id = p.employee_id WHERE p.date BETWEEN ? AND ?
+      ${f.employeeIds ? `AND e.id IN (${f.employeeIds.join(',') || 0})` : ''} ORDER BY CAST(e.code AS INTEGER), e.code, p.date, p.from_time`, [f.from, f.to])
+    if (!perms.length) return { html: '<p class="empty">لا توجد بيانات</p>' }
+    const ids = [...new Set(perms.map((p) => p.employee_id))]
+    const day = Object.fromEntries(Engine.compute({ ...f, employeeIds: ids }).map((r) => [`${r.emp.id}|${r.date}`, r]))
+    const emps = Object.fromEntries(DB.all(`SELECT * FROM employees WHERE id IN (${ids.join(',')})`).map((e) => [e.id, e]))
+    const blocks = ids.map((id) => {
+      const e = emps[id]
+      const body = perms.filter((p) => p.employee_id === id).map((p) => {
+        const r = day[`${id}|${p.date}`]
+        const a = Engine.toMin(p.from_time), b = Engine.toMin(p.to_time)
+        return `<tr data-emp="${esc(e.code)}" data-date="${p.date}"><td>${DAY_NAMES[Engine.DAY_INDEX(p.date)]}</td><td dir="ltr">${p.date}</td><td>${esc(p.from_time)}</td><td>${esc(p.to_time)}</td>
+          <td>${r ? hmOrBlank(dutyMin(r)) : ''}</td><td>${H(b >= a ? b - a : b + 1440 - a)}</td><td class="red">${r ? hmOrBlank(r.late + r.early) : ''}</td><td class="green">${r ? hmOrBlank(r.ot) : ''}</td>
+          <td>${r ? hmOrBlank(r.worked) : ''}</td><td class="st">${r ? esc(dayStatus(r)) : ''}</td></tr>`
+      }).join('')
+      return `<div class="rep-emp">${empSub(e, I(e), f)}<table class="rep"><thead><tr><th colspan="2" class="grp">${esc(groups[e.group_id] || '')}</th><th colspan="2">الإذن</th><th colspan="6"></th></tr>
+        <tr><th>اليوم</th><th>التاريخ</th><th>البدايه</th><th>النهايه</th><th>الدوام</th><th>الإذن</th><th>التأخير</th><th>الإضافي</th><th>ساعات العمل</th><th>حالة اليوم</th></tr></thead>
+        <tbody>${body}</tbody></table></div>`
+    })
+    return { html: blocks.join('') }
+  } },
 }
 
 // Apex «الموظفـــون» box: tick a criterion to enable its value
@@ -216,6 +284,9 @@ const REPORT_TITLES = {
   'الحضور والانصراف إجمالي': 'تقرير الحضور والانصراف الإجمالي',
   'حالة اليوم': 'تقرير حالة اليوم',
   'الغياب خلال فترة': 'تقرير الغياب',
+  'بيان تأخير الموظفين': 'تقرير بيان تأخير الموظفين',
+  'تأخير وإضافي الدوام': 'تقرير تأخير وإضافي الدوام',
+  'أذونات الموظفين': 'تقرير أذونات الموظفين',
 }
 // titles Apex prints on these reports
 const REPORT_PRINT_TITLES = { 'الغياب خلال فترة': 'تقرير الغياب' }
@@ -223,6 +294,7 @@ const REPORT_ICONS = {
   'مواعيد العمل': 'r_doc', 'الموظفون': 'i_emp', 'الحركات الغير مكتملة': 'r_basket', 'التأخير عن بداية الدوام اليومي': 'i_clock',
   'التأخير عن الدوام خلال فترة': 'r_cal', 'أجازات الموظفين': 'i_holiday', 'الحضور والانصراف تفصيلي': 'r_pen', 'الحضور والانصراف إجمالي': 'i_edit',
   'الغياب خلال فترة': 'r_note', 'حالة اليوم': 'r_cal', 'الحضور والانصراف بالحركات': 'i_view',
+  'بيان تأخير الموظفين': 'r_cal', 'تأخير وإضافي الدوام': 'i_clock', 'أذونات الموظفين': 'i_perm',
 }
 
 function openReport(name) {
@@ -277,7 +349,8 @@ function openReport(name) {
       const res = def.build(f, S)
       html = UI.letterhead(res.title || REPORT_PRINT_TITLES[name] || REPORT_TITLES[name] || name, '', { inline: name === 'الحضور والانصراف تفصيلي' }) +
         (res.html ?? (res.grouped ? res.groups.map((g) => `<div class="rep-group">${esc(g.title)}</div>${table(res.head, g.rows, g.foot)}`).join('') || '<p class="empty">لا توجد بيانات</p>'
-          : table(res.head, res.rows))) + UI.reportFoot()
+          : table(res.head, res.rows))) + (res.foot || '') + UI.reportFoot()
+      if (def.landscape) html = `<div class="landscape" data-landscape>${html}</div>`
       html = UI.slashDates(html) // Apex prints dates as yyyy/mm/dd
       out.innerHTML = html
     }

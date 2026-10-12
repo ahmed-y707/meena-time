@@ -361,12 +361,18 @@ table.rep tfoot td { font-weight: bold; background: #dcdcdc; color: #800000; }
 .rep-filters .trial-note { align-self: center; color: #b00; font-weight: bold; }
 /* «بيان تأخير الموظفين» month grid */
 table.rep.month-grid { font-size: 10px; }
-table.rep.month-grid th { background: #2e7d32; color: #fff; padding: 2px; }
-table.rep.month-grid td.c { width: 16px; padding: 0; height: 16px; }
-table.rep.month-grid td.nm { white-space: nowrap; background: #2e7d32; color: #fff; } /* Apex: the names column is green */
-table.rep.month-grid td.sig { width: 70px; }
-.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; margin: 6px 0; }
-.legend i { display: inline-block; width: 14px; height: 12px; border: 1px solid #555; margin-left: 4px; vertical-align: middle; }
+/* Apex «بيان تأخير الموظفين»: SeaGreen header row and الرقم / الاسم columns, white bold text */
+table.rep.month-grid th, table.rep.month-grid td.g { background: #2e8b57; color: #fff; padding: 2px; }
+table.rep.month-grid td.g { font-size: 8pt; }
+table.rep.month-grid td.c { width: 0.65cm; padding: 0; height: 16px; }
+table.rep.month-grid td.nm { white-space: nowrap; width: 3.6cm; font-size: 10px; }
+table.rep.month-grid td.sig { width: 2cm; }
+/* the colour key in Apex's page footer: two columns of four */
+.legend { display: grid; grid-template-columns: repeat(2, max-content); gap: 4px 40px; font-size: 11px; font-weight: bold; margin: 8px 12px; }
+.legend i { display: inline-block; width: 0.48cm; height: 0.44cm; margin-left: 10px; vertical-align: middle; }
+table.rep th.blank, table.rep th.grp { background: #fff; }
+.landscape { page: land; }
+@page land { size: A4 landscape; margin: 12mm; }
 /* sub-menu (Apex «اعدادات المستخدمين ▸») */
 #menubar .drop .sub { position: relative; }
 #menubar .drop .sub > .has-sub i { margin-right: auto; font-style: normal; font-size: 10px; }
