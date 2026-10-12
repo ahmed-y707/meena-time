@@ -1,16 +1,21 @@
-/* Visual language copied from Apex Time 2.6.4 (client video, 2026-09-24):
-   cyan desktop, Win-classic child windows with a blue caption, icon+label
-   toolbar buttons, grid with an amber sorted-column header. */
+/* Visual language measured from Apex Time 2.6.4 running live (2026-10-10, 1920×1080):
+   cyan MDI desktop under a grey menu bar, a tab per open child window, borderless
+   child windows (flat blue caption on white), outlined icon+label buttons, a
+   black-framed grid with an amber sorted-column header, blue labels, orange group boxes. */
 :root {
-  --desk: #3fc1e9;
-  --caption-blue: #1f7fd6;
-  --caption-blue-2: #3a95e3;
-  --panel: #f3f3f3;
-  --border: #9aa7b3;
-  --grid-head: #e8e8e8;
-  --grid-sort: #f6be6a;
-  --text: #1b1b1b;
-  --link: #0b3fa8;
+  --desk: #3bbfff;
+  --caption-blue: #0d88e6;
+  --caption-blue-2: #0d88e6;
+  --panel: #fff;
+  --border: #9da0aa;
+  --grid-head: linear-gradient(#f1f5f9, #e0e7f0);
+  --grid-sort: linear-gradient(#f7d596, #f4cb7a);
+  --text: #000;
+  --link: #000080;
+  --label: #0000ff;
+  --btn: #0000ff;
+  --input: #6495ed;
+  --group: #ffa500;
   --ok: #2e9b3a;
   --cancel: #d0231c;
 }
@@ -23,136 +28,202 @@ body {
   overflow: hidden;
   user-select: none;
 }
-#caption {
-  height: 22px; background: #fbfbfb; border-bottom: 1px solid #d5d5d5;
-  direction: ltr; padding: 3px 8px; font-size: 12px; color: #444;
+/* the version line lives in the OS title bar, as in Apex (see setCaption) */
+#caption { display: none; }
+
+/* ── MDI tab strip: one tab per open child window, close ✕ at the far end ── */
+#taskstrip {
+  position: absolute; top: 33px; left: 0; right: 0; height: 24px; display: flex; gap: 2px; align-items: flex-end;
+  direction: ltr; padding: 0 22px 0 4px; border-bottom: 1px solid var(--border); z-index: 90000;
 }
-#taskstrip { position: absolute; top: 24px; left: 4px; display: flex; gap: 4px; direction: rtl; z-index: 90000; }
+#taskstrip:empty { display: none; }
 #taskstrip button {
-  font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid #b9c3cc;
-  background: #eef2f5; cursor: pointer;
+  font: inherit; font-size: 11px; color: #201f35; height: 21px; padding: 0 10px; border: 1px solid var(--border);
+  border-bottom: 0; border-top: 2px solid transparent; background: #f0f0f0; cursor: pointer; direction: rtl;
 }
-#taskstrip button.active { background: #fff; font-weight: bold; }
+#taskstrip button.active { background: #fff; border-top-color: var(--desk); }
+#taskstrip .strip-x { position: absolute; right: 6px; top: 5px; width: 14px; height: 14px; padding: 0; border: 0; background: none; color: #555; font-size: 11px; line-height: 14px; }
+#statusbar { position: absolute; left: 4px; bottom: 2px; font-size: 13px; color: #f00; direction: rtl; z-index: 90000; }
+#statusbar b { font-weight: normal; }
 
 /* ── menu bar ─────────────────────────────────────────────── */
 #menubar {
-  position: absolute; top: 24px; right: 4px; display: flex; gap: 2px; z-index: 90000; /* above any child window */
+  position: absolute; top: 0; left: 0; right: 0; height: 33px; display: flex; gap: 0; align-items: center;
+  padding: 0 2px; background: #e0e0e0; border-bottom: 1px solid #b0c4de; z-index: 90000; /* above any child window */
 }
+#menubar .home-btn { margin-inline-start: auto; order: 99; width: 28px; height: 28px; border: 0; background: none; padding: 0; cursor: pointer; }
+#menubar .home-btn svg { width: 28px; height: 28px; }
 .menu { position: relative; }
 .menu > button {
-  font: inherit; background: transparent; border: 1px solid transparent; padding: 3px 8px;
-  display: flex; align-items: center; gap: 5px; cursor: pointer; color: #111; white-space: nowrap;
+  font: inherit; font-size: 11px; font-weight: bold; background: transparent; border: 1px solid transparent; padding: 3px 5px;
+  display: flex; align-items: center; gap: 5px; cursor: pointer; color: #000; white-space: nowrap; height: 30px;
 }
-.menu > button svg { width: 18px; height: 18px; flex: none; }
-.menu > button:hover, .menu.open > button { background: #eaf6fd; border-color: #7fb7e3; }
+.menu > button svg { width: 24px; height: 24px; flex: none; }
+.menu > button:hover { border-color: #858585; }
+.menu.open > button { background: #fcfcfc; border-color: #858585; border-bottom-color: #fcfcfc; }
 .menu .drop {
-  display: none; position: absolute; top: 100%; right: 0; min-width: 230px;
-  background: #f7f7f7; border: 1px solid #8f9aa5; box-shadow: 2px 3px 6px rgba(0,0,0,.25); padding: 2px; width: max-content;
+  display: none; position: absolute; top: 100%; right: 0; min-width: 160px;
+  background: #fefefe; border: 1px solid #858585; padding: 2px; width: max-content;
 }
 .menu.open .drop { display: block; }
 .drop button {
-  width: 100%; font: inherit; text-align: right; background: transparent; border: 1px solid transparent;
-  padding: 5px 8px 5px 24px; display: flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap;
+  width: 100%; font: inherit; font-size: 12px; font-weight: normal; text-align: right; background: transparent; border: 1px solid transparent;
+  padding: 3px 6px 3px 30px; height: 30px; display: flex; align-items: center; gap: 10px; cursor: pointer; white-space: nowrap; color: #000;
 }
-.drop button:hover { background: #d9ecfb; border-color: #7fb7e3; }
-.drop hr { border: 0; border-top: 1px solid #cfd4d9; margin: 2px 4px; }
-.ico { width: 18px; height: 18px; flex: none; }
+.drop button:hover { background: #ebf4fd; border-color: #a8d2f8; }
+.drop hr { border: 0; border-top: 1px solid #cfcfcf; margin: 3px 2px; }
+.ico { width: 22px; height: 22px; flex: none; }
 
 /* ── home ─────────────────────────────────────────────────── */
-#home { position: absolute; inset: 60px 0 0 0; }
+#home { position: absolute; inset: 34px 0 0 0; }
+/* laid out from the centre (Apex's offsets at 1920×1080), so it holds at any window size */
 #home .title {
-  position: absolute; right: 4%; top: 42%; font-size: 26px; color: var(--link);
-  text-decoration: underline; text-underline-offset: 6px; letter-spacing: 2px;
+  position: absolute; right: max(16px, calc(50% - 613px)); bottom: calc(52% + 36px); font-size: 38px; font-weight: bold; color: var(--link);
+  text-decoration: underline; text-underline-offset: 7px;
 }
 #home .trial {
-  position: absolute; right: 24%; top: 38%; font-size: 12px; font-weight: bold; color: #0d2a52; line-height: 1.45;
+  position: absolute; right: calc(50% - 258px); bottom: calc(52% + 30px); font-size: 16px; color: #000; line-height: 1.2;
 }
-#home .trial .key { position: absolute; left: -70px; top: -6px; width: 56px; height: 56px; }
-#home .tiles { position: absolute; top: 58%; right: 16%; display: flex; gap: 22px; }
+#home .trial .key { position: absolute; left: -100px; top: -14px; width: 104px; height: 104px; }
+#home .tiles { position: absolute; top: 48%; left: 50%; transform: translateX(-50%); display: flex; flex-direction: row-reverse; gap: 40px; }
 .tile {
-  width: 106px; height: 112px; background: #fbfbfb; border: 1px solid #d9d9d9; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-  font-size: 11px; font-weight: bold; color: #1a2f6b; box-shadow: 1px 1px 2px rgba(0,0,0,.15);
+  width: 170px; height: 185px; background: #fff; border: 1px solid #c0c0c0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; padding-bottom: 4px;
+  font-size: 16px; color: #0000c0;
 }
-.tile:hover { outline: 2px solid #1f7fd6; }
-.tile svg { width: 64px; height: 64px; }
+.tile:hover, .tile.on { background: #1e90ff; }
+.tile svg { width: 120px; height: 120px; margin-bottom: auto; margin-top: 18px; }
+/* a tile's page (Apex): rows of 4 (5 for التقارير), first tile on the right, title above on the right */
+#home.sub .tiles { top: 34%; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; width: calc(4 * 186px + 3 * 40px); row-gap: 14px; }
+#home.sub-reports .tiles { width: calc(5 * 170px + 4 * 22px); gap: 12px 22px; }
+#home.sub .title { bottom: auto; top: calc(34% - 64px); right: calc(50% - (4 * 186px + 3 * 40px) / 2); }
+#home.sub-reports .title { right: calc(50% - (5 * 170px + 4 * 22px) / 2); }
+#home.sub .tile { width: 186px; text-align: center; font-weight: bold; }
+#home.sub-reports .tile { width: 170px; }
+#home.sub .tile svg { width: 110px; height: 110px; }
 
 /* ── child windows ────────────────────────────────────────── */
 .win {
-  position: absolute; background: var(--panel); border: 1px solid #7e8a96;
-  box-shadow: 3px 3px 10px rgba(0,0,0,.3); display: flex; flex-direction: column; min-width: 420px;
+  position: absolute; background: var(--panel); border: 0; border-top: 1px solid #fff;
+  display: flex; flex-direction: column; min-width: 420px;
 }
 .win .cap {
-  height: 26px; background: linear-gradient(var(--caption-blue-2), var(--caption-blue)); color: #fff;
-  text-align: center; font-size: 14px; line-height: 26px; cursor: move; position: relative;
+  height: 34px; background: var(--caption-blue); color: #fff;
+  text-align: center; font-size: 20px; font-weight: bold; line-height: 34px; cursor: move; position: relative;
 }
-.win .cap .x { position: absolute; left: 4px; top: 3px; width: 20px; height: 18px; border: 0; background: #c9453d; color: #fff; cursor: pointer; line-height: 16px; }
-.toolbar { display: flex; gap: 2px; padding: 3px; background: #eef0f2; border-bottom: 1px solid #c4cad0; flex-wrap: nowrap; }
+.win .cap .x { display: none; } /* Apex closes from the toolbar or the tab strip */
+.toolbar { display: flex; justify-content: flex-end; gap: 4px; padding: 1px 0 6px; background: #fff; flex-wrap: nowrap; } /* Apex packs them from the left */
 .toolbar button {
-  font: inherit; font-size: 12px; font-weight: bold; color: #1b3d8f; display: flex; align-items: center; gap: 4px;
-  padding: 3px 6px; background: linear-gradient(#fff, #e9ecef); border: 1px solid #aeb7c0; border-radius: 2px; cursor: pointer; white-space: nowrap;
+  font: inherit; font-size: 16px; color: var(--btn); display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: 2px;
+  height: 49px; min-width: 86px; padding: 0 6px; background: #fff; border: 1px solid var(--btn); cursor: pointer; white-space: nowrap;
 }
-.toolbar button:hover { border-color: #3a8ee6; background: #eaf5ff; }
-.toolbar button:disabled { opacity: .45; cursor: default; }
-.toolbar button svg { width: 20px; height: 20px; }
+.toolbar button:hover:not(:disabled), .dlg .btns button:hover, .win .body button:not(:disabled):hover { background: #ff8c00; } /* Apex: orange under the mouse */
+.toolbar button:disabled { color: #555; cursor: default; border-width: 1px; padding: 0 6px; }
+.toolbar button svg { width: 32px; height: 32px; }
 
-.grid-wrap { flex: 1; overflow: auto; background: #fff; margin: 4px; border: 1px solid #b7bfc7; }
-table.grid { border-collapse: collapse; width: 100%; font-size: 12px; }
+.grid-wrap { flex: 1; overflow: auto; background: #fff; margin: 4px 0 0; border: 1px solid #000; }
+table.grid { border-collapse: collapse; width: 100%; font-size: 13px; }
 .grid th {
-  background: var(--grid-head); border: 1px solid #c6cbd0; padding: 3px 6px; font-weight: normal; position: sticky; top: 0;
+  background: var(--grid-head); border: 1px solid #9eb6ce; border-top: 0; padding: 2px 6px; height: 24px;
+  font-size: 15px; font-weight: normal; color: #800000; position: sticky; top: 0;
 }
-.grid th.sorted { background: var(--grid-sort); }
-.grid td { border: 1px solid #e1e4e7; padding: 2px 6px; height: 22px; }
-.grid td.sel { width: 16px; background: #eceff2; border-color: #d0d5da; text-align: center; color: #d27d00; }
-.grid tr.current td { background: #fff4df; }
+.grid th.sorted { background: var(--grid-sort); border-bottom-color: #f29536; }
+.grid td { border: 1px solid #d0d7e5; padding: 1px 6px; height: 23px; color: #000080; font-weight: bold; }
+.grid td.sel { width: 40px; background: var(--grid-head); border-color: #9eb6ce; text-align: right; color: #000; font-size: 10px; }
+.grid tr.current td.sel { background: var(--grid-sort); }
+.grid tr.current td { background: #fff; }
 .grid tr.current td.sel::before { content: '◂'; }
-.grid td input[type=text] { width: 100%; border: 0; background: transparent; font: inherit; padding: 0; }
-.grid td input[type=text]:focus { outline: 1px solid #3a8ee6; background: #fff; }
+.grid td input[type=text] { width: 100%; border: 0; background: transparent; font: inherit; color: inherit; padding: 0; }
+.grid td input[type=text]:focus { outline: 1px solid var(--input); background: #fff; }
 .grid td.center { text-align: center; }
 .grid tr.new td { color: #777; }
 
 /* ── dialogs (login / register) ───────────────────────────── */
-.dlg-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.08); display: flex; align-items: center; justify-content: center; z-index: 100000; /* modal: always on top */ }
-.dlg { background: #fff; border: 1px solid #6e7a86; box-shadow: 4px 4px 14px rgba(0,0,0,.35); width: 440px; }
-.dlg .winbar { height: 22px; background: #f4f4f4; border-bottom: 1px solid #ddd; font-size: 11px; padding: 3px 8px; color: #333; }
-.dlg .head { background: linear-gradient(#3a95e3, #1f6fc4); color: #fff; text-align: center; font-size: 15px; padding: 4px; }
-.dlg .body { display: flex; gap: 12px; padding: 12px; direction: rtl; }
-.dlg .fields { flex: 1; display: grid; grid-template-columns: 90px 1fr; gap: 6px 8px; align-items: center; }
-.dlg label { color: #0b3fa8; font-weight: bold; font-size: 12px; }
+.dlg-backdrop { position: fixed; inset: 0; background: transparent; display: flex; align-items: center; justify-content: center; z-index: 100000; /* modal: always on top */ }
+.dlg { background: #fff; border: 0; width: 440px; position: relative; }
+.dlg .winbar { height: 18px; background: #808080; font-size: 10px; padding: 2px 6px; color: #ddd; }
+.dlg .head { background: var(--caption-blue); color: #fff; text-align: center; font-size: 20px; font-weight: bold; height: 29px; line-height: 29px; }
+.dlg .body { display: flex; gap: 12px; padding: 8px; direction: rtl; }
+.dlg .fields { flex: 1; display: grid; grid-template-columns: 130px 1fr; gap: 9px 8px; align-items: center; align-content: start; }
+.dlg .fields > label { line-height: 26px; }
+.dlg label { color: var(--label); font-size: 16px; }
 .dlg input[type=text], .dlg input[type=password], .dlg select {
-  font: inherit; padding: 2px 4px; border: 1px solid #a9b3bd; height: 22px; width: 100%;
+  font: inherit; padding: 1px 4px; border: 1px solid var(--input); height: 26px; width: 100%; background: #fff;
 }
-.dlg .avatar { width: 110px; height: 110px; flex: none; }
-.dlg .btns { display: flex; gap: 8px; padding: 0 12px 12px; direction: rtl; }
+/* login: the avatar stands at the left beside both the fields and the buttons */
+.dlg .avatar { position: absolute; left: 4px; top: 36px; width: 146px; height: 160px; }
+.dlg:has(.avatar) .body { padding-left: 156px; }
+.dlg:has(.avatar) .btns { padding: 0 154px 6px 0; }
+.dlg:has(.avatar) .err:empty { min-height: 0; padding: 0; }
+.dlg .btns { display: flex; gap: 20px; padding: 0 8px 8px; direction: rtl; }
 .dlg .btns button {
-  font: inherit; font-weight: bold; display: flex; align-items: center; gap: 6px; padding: 5px 12px;
-  background: linear-gradient(#fff, #e9ecef); border: 1px solid #aeb7c0; cursor: pointer; color: #1b3d8f;
+  font: inherit; font-size: 16px; display: flex; flex-direction: row; justify-content: space-between; align-items: center; gap: 10px;
+  height: 45px; min-width: 99px; padding: 0 6px 0 8px; background: #fff; border: 1px solid var(--btn); cursor: pointer; color: var(--btn);
 }
-.dlg .btns button svg { width: 20px; height: 20px; }
-.dlg .foot { height: 6px; background: #f08a24; }
-.dlg .err { color: #c0271f; font-size: 12px; padding: 0 12px 8px; min-height: 16px; }
-.lang { display: flex; gap: 16px; align-items: center; font-size: 12px; }
+.dlg .btns button svg { width: 22px; height: 22px; }
+.dlg .foot { height: 14px; background: #ff8000; color: #00008b; font-size: 11px; line-height: 14px; padding: 0 6px; text-align: left; direction: ltr; }
+.dlg .err { color: #c0271f; font-size: 12px; padding: 0 12px 4px; min-height: 16px; }
+/* Apex message box (Windows MessageBox): caption bar, (i) icon on the left, text, centred button */
+.dlg.msg { background: #f0f0f0; border: 1px solid #888; }
+.dlg.msg .winbar { height: 22px; background: #fff; color: #000; font-size: 12px; padding: 3px 8px; border-bottom: 1px solid #ddd; }
+.dlg.msg .body { flex-direction: row-reverse; justify-content: flex-end; align-items: flex-start; gap: 12px; padding: 14px 16px 10px; background: #f0f0f0; }
+.dlg.msg .msg-icon { width: 32px; height: 32px; flex: none; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #7aa6e0, #2e5fa6); color: #fff; font: italic bold 20px/32px Georgia, serif; text-align: center; }
+.dlg.msg .msg-icon.q { font-style: normal; font-family: Tahoma, sans-serif; }
+.dlg.msg .msg-text { flex: 1; font-size: 13px; white-space: pre-line; line-height: 1.5; }
+.dlg.msg .btns { justify-content: center; padding: 6px 8px 10px; }
+.dlg.msg .btns button { height: 26px; min-width: 76px; font-size: 13px; color: #000; border-color: #3c7fb1; justify-content: center; }
+.dlg.msg .btns button svg { display: none; }
+.dlg.msg .foot { display: none; }
+.dlg.btns-left .btns { justify-content: flex-end; }
+.lang { display: flex; gap: 16px; align-items: center; font-size: 16px; color: var(--label); }
 
 /* ── grid cell editors ────────────────────────────────────── */
-.grid td select.cell-select, .grid td input.cell-date { width: 100%; border: 0; background: transparent; font: inherit; }
+.grid td select.cell-select, .grid td input.cell-date { width: 100%; border: 0; background: transparent; font: inherit; color: inherit; }
 .grid td input.center { text-align: center; }
 .grid td input:disabled { background: #f0f0f0; }
 
+/* ── inputs everywhere: cornflower 1px box; selects get the blue drop button on the left ── */
+.win input[type=text], .win input[type=password], .win input[type=number], .win input[type=date], .win input[type=time], .win select, .win textarea,
+.dlg select {
+  border: 1px solid var(--input); background-color: #fff; border-radius: 0; color: #000;
+}
+.win select, .dlg select {
+  appearance: none; padding-left: 20px;
+  background-image: linear-gradient(#7cb2f0, #7cb2f0), linear-gradient(#fff, #fff);
+  background-size: 14px calc(100% - 4px), 6px 3px; background-position: 2px 2px, 6px 50%; background-repeat: no-repeat;
+}
+.win :is(input[type=text], input[type=password], input[type=number], input[type=date], input[type=time], select):not(.grid *, .bar-search) {
+  font-size: 15px; height: 26px;
+}
+.win input[type=date], .dlg input[type=date] { direction: ltr; display: inline-flex; }
+.win input[type=date]::-webkit-calendar-picker-indicator, .dlg input[type=date]::-webkit-calendar-picker-indicator { order: -1; margin: 0 6px 0 0; }
+.win input[type=date]::-webkit-datetime-edit, .dlg input[type=date]::-webkit-datetime-edit { order: 1; text-align: right; flex: 1; }
+.dt-face:not(:focus)::-webkit-datetime-edit, .grid input[type=date]:not(.dt-face):not(:focus)::-webkit-datetime-edit { color: transparent; } /* an empty grid date is blank, as in Apex */
+.dt-face:focus { background-image: none !important; }
+.win fieldset { border: 1px solid var(--group) !important; border-radius: 6px; background: #fff !important; }
+.win legend { color: #000 !important; font-weight: bold; font-size: 18px; border: 0 !important; background: #fff !important; padding: 0 4px; }
+.win label { color: var(--label); font-weight: normal !important; font-size: 16px; }
+/* buttons inside a window's body (not the toolbar): white, blue outline and text */
+.win .body button:not(.toolbar button, .grid button, .tabs button, .st-tabs button, .block-btns button, .gm-btns button, .x) {
+  background: #fff; border: 1px solid var(--btn); color: var(--btn); font-family: inherit; font-weight: normal; border-radius: 0;
+}
+.win .body button:not(.toolbar button, .grid button, .tabs button, .st-tabs button, .block-btns button, .gm-btns button, .x) span { font-weight: normal !important; color: var(--btn) !important; font-size: 16px; }
+
 /* ── form windows (employee) ─────────────────────────────── */
 .form { flex: 1; overflow: auto; padding: 6px 8px; }
-.form fieldset { border: 1px solid #b7bfc7; margin: 0 0 8px; padding: 6px 10px 8px; background: #fafbfc; }
-.form legend { color: #0b3fa8; font-weight: bold; padding: 0 6px; }
+.form fieldset { border: 1px solid var(--group); margin: 0 0 8px; padding: 6px 10px 8px; background: #fff; }
+.form legend { color: #000; font-weight: bold; padding: 0 6px; }
 .form .grid2 { display: grid; grid-template-columns: 170px 1fr 150px 1fr; gap: 5px 10px; align-items: center; }
-.form .grid2 label { color: #1b3d8f; font-weight: bold; font-size: 12px; }
-.form input[type=text], .form input[type=date], .form select { font: inherit; height: 23px; padding: 1px 4px; border: 1px solid #a9b3bd; width: 100%; background: #fff; }
+.form .grid2 label { color: var(--label); font-size: 15px; }
+.form input[type=text], .form input[type=date], .form select { font: inherit; height: 23px; padding: 1px 4px; border: 1px solid var(--input); width: 100%; background-color: #fff; }
 .form .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
-.form .chk { font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.form .chk { font-size: 13px; display: flex; align-items: center; gap: 6px; color: var(--label); }
 
 /* ── filter row, reports, printing ───────────────────────── */
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 5px 8px; background: #f7f8f9; border-bottom: 1px solid #d3d8dd; font-size: 12px; }
-.filters label { color: #1b3d8f; font-weight: bold; }
-.filters input, .filters select { font: inherit; height: 23px; border: 1px solid #a9b3bd; padding: 0 4px; }
-.filters button { font: inherit; font-weight: bold; padding: 2px 14px; border: 1px solid #aeb7c0; background: linear-gradient(#fff, #e9ecef); cursor: pointer; color: #1b3d8f; }
+.filters label { color: #0000ff; font-weight: bold; }
+.filters input, .filters select { font: inherit; height: 23px; border: 1px solid #6495ed; padding: 0 4px; }
+.filters button { font: inherit; font-weight: bold; padding: 2px 14px; border: 1px solid #aeb7c0; background: linear-gradient(#fff, #e9ecef); cursor: pointer; color: #0000ff; }
 .filters .trial-note { margin-inline-start: auto; color: #b3261e; font-weight: bold; }
 .report-out { flex: 1; overflow: auto; background: #fff; margin: 4px; border: 1px solid #b7bfc7; padding: 8px 12px; }
 /* Apex-style report letterhead: company (right) · title (centre) · print info (left) */
@@ -165,9 +236,10 @@ table.grid { border-collapse: collapse; width: 100%; font-size: 12px; }
 .rep-head h2 { margin: 0 0 3px; font-size: 17px; color: #000; }
 .rep-head .per { font-size: 12px; }
 .rep-group { background: #e3edf7; border: 1px solid #9fb6cf; padding: 3px 8px; font-weight: bold; margin-top: 10px; }
-table.rep { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 6px; }
-table.rep th { background: #e6e6e6; border: 1px solid #000; padding: 3px 4px; }
-table.rep td { border: 1px solid #000; padding: 2px 4px; text-align: center; }
+table.rep { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 6px; }
+table.rep th { background: #dcdcdc; border: 1px solid #000; padding: 2px 3px; font-weight: bold; }
+table.rep td { border: 1px solid #000; padding: 1px 3px; text-align: center; height: 18px; }
+table.rep td[dir=ltr], table.rep td:has(> [dir=ltr]) { white-space: nowrap; }
 table.rep tfoot td { font-weight: bold; background: #f4f4f4; }
 .empty { text-align: center; color: #777; padding: 12px; }
 #print-area { display: none; }
@@ -179,7 +251,8 @@ table.rep tfoot td { font-weight: bold; background: #f4f4f4; }
 }
 
 /* printed / PDF output uses Apex's serif, black-bordered look */
-#print-area, body.pdf { font-family: "Times New Roman", "Traditional Arabic", serif; color: #000; }
+/* printed / PDF output and the on-screen report: Apex's report fonts (sans, compact) */
+#print-area, body.pdf, .report-out { font-family: Tahoma, Arial, "Segoe UI", sans-serif; color: #000; }
 body.pdf { background: #fff; overflow: visible; }
 
 /* ── calendar tabs (أيام السنة / أيام رمضان) ───────────── */
@@ -191,8 +264,8 @@ body.pdf { background: #fff; overflow: visible; }
 .blocks { flex: 1; overflow: auto; padding: 6px 8px; background: #fff; }
 .block { margin-bottom: 14px; }
 .block-head { display: flex; justify-content: center; gap: 40px; align-items: center; margin: 4px 0 6px; font-size: 13px; }
-.block-head label { display: flex; align-items: center; gap: 6px; font-weight: bold; color: #1b3d8f; }
-.block-head input.num { width: 50px; height: 24px; text-align: center; border: 1px solid #a9b3bd; font: inherit; }
+.block-head label { display: flex; align-items: center; gap: 6px; font-weight: bold; color: #0000ff; }
+.block-head input.num { width: 50px; height: 24px; text-align: center; border: 1px solid #6495ed; font: inherit; }
 .block table.grid th { color: rgb(33,37,41); background: rgb(242,242,242); border: 1px solid rgb(0,86,179); font-weight: bold; }
 .block table.grid td { border: 1px solid rgb(0,86,179); }
 .block-btns { display: flex; gap: 8px; justify-content: flex-end; padding: 4px 0 10px; }
@@ -209,17 +282,17 @@ body.pdf { background: #fff; overflow: visible; }
 .hist { margin-top: 6px; font-size: 12px; color: #333; }
 .perm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-height: 420px; overflow: auto; width: 100%; }
 .perm-grid fieldset { border: 1px solid #b7bfc7; margin: 0; padding: 4px 8px; font-size: 12px; }
-.perm-grid legend { font-weight: bold; color: #0b3fa8; }
+.perm-grid legend { font-weight: bold; color: #0000ff; }
 .perm-grid .chk { display: flex; gap: 6px; align-items: center; padding: 1px 0; }
 .cnt { font: inherit; }
 
 /* ── user guide ─────────────────────────────────────────── */
 .guide { flex: 1; display: flex; min-height: 0; background: #fff; }
 .guide nav { width: 190px; flex: none; border-inline-end: 1px solid #d3d8dd; padding: 6px; overflow: auto; background: #f7f8f9; }
-.guide nav a { display: block; padding: 5px 8px; color: #0b3fa8; text-decoration: none; font-weight: bold; font-size: 12.5px; }
+.guide nav a { display: block; padding: 5px 8px; color: #0000ff; text-decoration: none; font-weight: bold; font-size: 12.5px; }
 .guide nav a:hover { background: #e3edf7; }
 .guide article { flex: 1; overflow: auto; padding: 8px 16px; line-height: 1.8; font-size: 13px; }
-.guide h3 { color: #0b3fa8; border-bottom: 1px solid #d3d8dd; padding-bottom: 3px; margin: 14px 0 6px; }
+.guide h3 { color: #0000ff; border-bottom: 1px solid #d3d8dd; padding-bottom: 3px; margin: 14px 0 6px; }
 .guide ol, .guide ul { padding-inline-start: 22px; margin: 4px 0; }
 
 /* drop-down list used for every <select> (see UI.openSelect) */
@@ -230,69 +303,60 @@ body.pdf { background: #fff; overflow: visible; }
 .sel-pop .sel-opt.on:hover { background: #3a8ee6; }
 
 /* «مرتبط بالموقع» status chip (bottom-left) — click to sync now */
-#sync-status { position: fixed; left: 8px; bottom: 6px; z-index: 90000; background: rgba(255,255,255,.9); border: 1px solid #9fb6cf; padding: 2px 10px; font-size: 12px; color: #1b3d8f; cursor: pointer; direction: rtl; border-radius: 2px; }
+#sync-status { position: fixed; left: 8px; bottom: 6px; z-index: 90000; background: rgba(255,255,255,.9); border: 1px solid #9fb6cf; padding: 2px 10px; font-size: 12px; color: #0000ff; cursor: pointer; direction: rtl; border-radius: 2px; }
 
 /* «إعدادات النظام» (Apex Time layout: rules right, auto-read left, colours bottom) */
-.sys-set { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; overflow: auto; }
-.sys-set fieldset { border: 1px solid #f0a830; border-radius: 6px; margin: 0; padding: 8px 12px; background: #fff; }
-.sys-set legend { color: #0b3fa8; font-weight: bold; padding: 0 6px; border: 1px solid #f0a830; border-radius: 4px; background: #fff; }
-.sys-set .rules { grid-column: 1; grid-row: 1; }
-.sys-set .auto { grid-column: 2; grid-row: 1; }
-.sys-set .colors { grid-column: 1; display: grid; grid-template-columns: repeat(4, auto); gap: 6px 14px; align-items: center; }
-.sys-set .row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
-.sys-set .row.top { align-items: flex-start; }
-.sys-set .row > label:first-child { flex: 1; color: #0b3fa8; font-weight: bold; }
-.sys-set .num { width: 70px; text-align: center; }
-.sys-set .row select { width: 150px; }
-.sys-set .times { display: flex; flex-direction: column; gap: 4px; width: 210px; }
-.sys-set .times .add { display: flex; gap: 4px; }
-.sys-set .times .add input { flex: 1; }
-.sys-set .times .add button { width: 30px; padding: 2px; }
-.sys-set .times select { height: 96px; }
-.sys-set .note { font-size: 12px; color: #555; margin-top: 6px; }
-.sys-set .clr { display: flex; align-items: center; gap: 6px; color: #0b3fa8; }
-.sys-set .clr input { width: 34px; height: 20px; padding: 0; border: 1px solid #888; }
 
 /* Apex Time report chrome: cyan company boxes · logo · cyan title bar · footer */
-.rep-head.apex { display: grid; grid-template-columns: 1fr 160px 1fr; gap: 14px; align-items: center; border: 0; margin-bottom: 6px; padding: 0; }
-.rep-head.apex .box { background: #3fe0f0; padding: 6px 10px; text-align: center; font-size: 12px; min-height: 38px; }
-.rep-head.apex .box .co { font-size: 13px; font-weight: bold; }
-.rep-head.apex .logo { text-align: center; }
+.rep-head.apex { display: grid; grid-template-columns: 1fr 200px 1fr; gap: 20px; align-items: center; border: 0; margin-bottom: 8px; padding: 0; }
+.rep-head.apex .box { background: #3beeff; padding: 4px 10px; text-align: center; min-height: 54px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.rep-head.apex .box .co, .rep-head.apex .box .act { font-size: 13px; font-weight: bold; }
+.rep-head.apex .logo { text-align: center; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .rep-head.apex .logo img { max-height: 48px; max-width: 150px; }
-.rep-title { background: #3fe0f0; text-align: center; font-weight: bold; font-size: 14px; padding: 4px; margin: 4px 0 6px; }
-.rep-sub { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1px solid #000; padding: 4px 8px; font-size: 12px; margin-bottom: 4px; }
+/* «التفصيلي»: logo and title side by side in the middle */
+.rep-head.apex.inline { grid-template-columns: 1fr 1.6fr 1fr; }
+.rep-head.apex.inline .t { background: #3beeff; padding: 4px 12px; font-weight: bold; font-size: 13px; white-space: nowrap; }
+.rep-title { background: #3beeff; text-align: center; font-weight: bold; font-size: 14px; padding: 4px; margin: 4px 0 4px; }
+.rep-rule { border: 0; border-top: 1px solid #000; margin: 4px 8px 10px; }
+.rep-sub { display: flex; justify-content: center; gap: 70px; flex-wrap: wrap; border: 1px solid #000; padding: 10px 8px; font-size: 12px; margin-bottom: 4px; }
+.rep-sub.emp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px 10px; justify-content: stretch; padding: 4px 8px; font-size: 11px; }
 .rep-sub b { font-weight: bold; }
-.rep-foot { margin-top: 14px; font-size: 11px; border-top: 1px solid #000; padding-top: 4px; }
-.rep-foot > div { display: flex; justify-content: space-between; gap: 10px; }
-.rep-foot .c { margin-top: 3px; }
-table.rep td.red, table.rep .red { color: #c00000; }
+.rep-foot { margin-top: 30px; font-size: 10px; }
+.rep-foot > div { display: flex; justify-content: space-between; gap: 10px; padding: 0 30px; }
+.rep-foot .c { margin-top: 4px; border-top: 1px solid #000; padding: 4px 6px 0; }
+table.rep td.red, table.rep .red { color: #c00000; white-space: nowrap; }
 table.rep td.green { color: #008000; }
-table.rep tr.day-head td { background: #d9d9d9; font-weight: bold; }
-table.rep tfoot td { font-weight: bold; background: #d9d9d9; color: #7a0000; }
+table.rep tr.day-head td { background: #dcdcdc; font-weight: bold; }
+table.rep tfoot td { font-weight: bold; background: #dcdcdc; color: #800000; }
 .rep-emp { page-break-inside: avoid; margin-bottom: 16px; }
 .rep-emp + .rep-emp { page-break-before: always; }
 
 /* «بيانات الشركة» (Apex: blue side panel right, fields left) */
 .company { display: flex; flex-direction: row; flex: 1; min-height: 0; padding: 8px; gap: 10px; }
-.company .side { width: 160px; background: #1a86e0; color: #fff; font-size: 18px; display: flex; align-items: center; justify-content: center; }
-.company .main { flex: 1; display: grid; grid-template-columns: 130px 1fr; gap: 8px 10px; align-content: start; position: relative; padding-left: 250px; }
-.company .main > label { color: #0b3fa8; font-weight: bold; align-self: center; }
+.company .side { width: 160px; background: #0d88e6; color: #fff; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+/* Apex: six wide fields; then الموقع / الايميل / التليفون narrower with الفاكس · الشعار · the logo beside them */
+.company .main { flex: 1; display: grid; grid-template-columns: 140px 270px 230px; gap: 9px 14px; align-content: start; justify-content: start; padding-top: 4px; }
+.company .main > label { color: #0000ff; font-weight: bold; align-self: center; }
+.company .main .wide { grid-column: 2 / 4; display: flex; }
+.company .main .wide input { flex: 1; }
 .company .main input { text-align: center; }
-.company .aside { position: absolute; left: 0; top: 188px; width: 230px; display: grid; grid-template-columns: 60px 1fr; gap: 8px; }
-.company .aside > label { color: #0b3fa8; font-weight: bold; align-self: center; }
-.company .upload { border: 1px solid #1a3fa8; padding: 4px 8px; cursor: pointer; color: #0b3fa8; font-weight: bold; }
-.company .logo { grid-column: 1 / -1; border: 1px solid #1a3fa8; height: 80px; display: flex; align-items: center; justify-content: center; background: #fff; }
-.company .logo img { max-height: 74px; max-width: 220px; }
+.company .aside { grid-column: 3; grid-row: 7 / span 4; display: grid; grid-template-columns: 1fr 120px; gap: 8px 8px; align-content: start; }
+.company .aside > label { color: #0000ff; font-weight: bold; align-self: center; }
+.company .upload { border: 1px solid #0000ff; padding: 3px 8px; cursor: pointer; color: #0000ff; font-weight: bold; display: flex; align-items: center; justify-content: space-between; direction: ltr; }
+.company .upload svg { width: 20px; height: 22px; }
+.company .logo { grid-column: 1 / -1; border: 1px solid #a0a0a0; height: 84px; display: flex; align-items: center; justify-content: center; background: #fff; }
+.company .logo img { max-height: 78px; max-width: 220px; }
 
 /* report filter panel (Apex: «الفتـــرة» + «الموظفـــون» boxes) */
-.rep-filters { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 10px; align-items: flex-start; }
-.rep-filters fieldset { border: 1px solid #f0a830; border-radius: 6px; margin: 0; padding: 6px 10px; background: #fff; }
-.rep-filters legend { color: #0b3fa8; font-weight: bold; padding: 0 6px; }
+.rep-filters { display: flex; flex-direction: column; gap: 6px; padding: 6px 4px; } /* Apex: الفتـــرة over الموظفـــون, full width */
+.rep-filters fieldset { border: 1px solid #ffa500; border-radius: 6px; margin: 0; padding: 6px 10px; background: #fff; }
+.rep-filters legend { color: #0000ff; font-weight: bold; padding: 0 6px; }
 .rep-filters .fl-per { display: flex; gap: 8px; align-items: center; }
-.rep-filters .fl-per label { color: #0b3fa8; font-weight: bold; }
+.rep-filters .fl-per label { color: #0000ff; font-weight: bold; }
 .rep-filters .fl-per #r-year { width: 70px; text-align: center; }
-.rep-filters .fl-emp { display: grid; grid-template-columns: auto 220px auto 220px; gap: 5px 10px; align-items: center; }
-.rep-filters .fl-emp label { color: #0b3fa8; font-weight: bold; white-space: nowrap; }
+.rep-filters .fl-per { justify-content: center; }
+.rep-filters .fl-emp { display: grid; grid-template-columns: auto 220px; justify-content: start; gap: 4px 10px; align-items: center; }
+.rep-filters .fl-emp label { color: #0000ff; font-weight: bold; white-space: nowrap; }
 .rep-filters .fl-emp .codes { display: flex; gap: 6px; align-items: center; }
 .rep-filters .fl-emp .codes input { width: 70px; text-align: center; }
 .rep-filters .trial-note { align-self: center; color: #b00; font-weight: bold; }
@@ -300,7 +364,7 @@ table.rep tfoot td { font-weight: bold; background: #d9d9d9; color: #7a0000; }
 table.rep.month-grid { font-size: 10px; }
 table.rep.month-grid th { background: #2e7d32; color: #fff; padding: 2px; }
 table.rep.month-grid td.c { width: 16px; padding: 0; height: 16px; }
-table.rep.month-grid td.nm { white-space: nowrap; }
+table.rep.month-grid td.nm { white-space: nowrap; background: #2e7d32; color: #fff; } /* Apex: the names column is green */
 table.rep.month-grid td.sig { width: 70px; }
 .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; margin: 6px 0; }
 .legend i { display: inline-block; width: 14px; height: 12px; border: 1px solid #555; margin-left: 4px; vertical-align: middle; }
@@ -312,10 +376,10 @@ table.rep.month-grid td.sig { width: 70px; }
 
 /* «صلاحيات المستخدمين» / «إدارة المستخدمين» (Apex: blue bands, info box + list, screen grid) */
 .roles, .users-apex { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 6px 8px; gap: 6px; }
-.roles .band, .users-apex .band { background: #1a86e0; color: #fff; text-align: center; font-weight: bold; padding: 3px; }
+.roles .band, .users-apex .band { background: #0d88e6; color: #fff; text-align: center; font-weight: bold; padding: 3px; }
 .roles .top { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
-.roles .top .info { border: 1px solid #f0a830; border-radius: 6px; margin: 0; }
-.roles .top .info legend { color: #0b3fa8; font-weight: bold; }
+.roles .top .info { border: 1px solid #ffa500; border-radius: 6px; margin: 0; }
+.roles .top .info legend { color: #0000ff; font-weight: bold; }
 .roles .top .list .grid-wrap { height: 110px; }
 .roles .screens { flex: 1; min-height: 160px; }
 .roles .perm-btns { display: flex; gap: 8px; justify-content: center; }
@@ -323,15 +387,15 @@ table.rep.month-grid td.sig { width: 70px; }
 .users-apex .u-form { grid-template-columns: 110px 1fr 120px 1fr; gap: 6px 10px; padding: 4px 8px; }
 .users-apex .grid-wrap { flex: 1; min-height: 120px; }
 .win .fields { display: grid; grid-template-columns: 110px 1fr; gap: 6px 8px; align-items: center; }
-.win .fields > label { color: #0b3fa8; font-weight: bold; }
+.win .fields > label { color: #0000ff; font-weight: bold; }
 .users-apex .fields.u-form { grid-template-columns: 110px 1fr 130px 1fr; }
 
 /* «قراءة الحركات» (Apex: الفترة on top, devices | files, عدد الحركات) */
 .read-punches { display: flex; flex-direction: column; gap: 8px; padding: 8px; flex: 1; min-height: 0; }
-.read-punches fieldset { border: 1px solid #f0a830; border-radius: 6px; margin: 0; padding: 6px 10px; background: #fff; }
-.read-punches legend { color: #0b3fa8; font-weight: bold; padding: 0 6px; }
+.read-punches fieldset { border: 1px solid #ffa500; border-radius: 6px; margin: 0; padding: 6px 10px; background: #fff; }
+.read-punches legend { color: #0000ff; font-weight: bold; padding: 0 6px; }
 .read-punches .per, .read-punches .count { display: flex; gap: 8px; align-items: center; }
-.read-punches .per label, .read-punches .count label { color: #0b3fa8; font-weight: bold; }
+.read-punches .per label, .read-punches .count label { color: #0000ff; font-weight: bold; }
 .read-punches .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; min-height: 0; }
 .read-punches .cols fieldset { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .read-punches .cols .grid-wrap { flex: 1; min-height: 110px; }
@@ -345,48 +409,53 @@ table.rep.month-grid td.sig { width: 70px; }
 .read-punches #rp-count { width: 90px; text-align: center; }
 .read-punches #rp-msg { font-size: 12px; color: #333; }
 .read-punches .cols > fieldset > button svg { width: 22px; height: 22px; }
-.read-punches .cols > fieldset > button span { white-space: nowrap; font-weight: bold; color: #0b3fa8; }
+.read-punches .cols > fieldset > button span { white-space: nowrap; font-weight: bold; color: #0000ff; }
 .read-punches .fbtns svg { width: 18px; height: 18px; }
 
 /* Apex «الاقسام» tree beside a list */
 .with-tree { display: flex; flex: 1; min-height: 0; gap: 6px; padding: 4px 6px; }
 .with-tree > .main-col { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.dept-tree { width: 190px; border: 1px solid #f0a830; border-radius: 6px; background: #fff; overflow: auto; padding: 4px 6px; }
-.dept-tree .tt { color: #0b3fa8; font-weight: bold; font-size: 15px; border-bottom: 1px solid #f0a830; margin-bottom: 4px; }
+.dept-tree { width: 190px; border: 1px solid #ffa500; border-radius: 6px; background: #fff; overflow: auto; padding: 4px 6px; }
+.dept-tree .tt { color: #0000ff; font-weight: bold; font-size: 15px; border-bottom: 1px solid #ffa500; margin-bottom: 4px; }
 .dept-tree ul { list-style: none; margin: 0; padding-right: 12px; }
 .dept-tree > ul { padding-right: 0; }
-.dept-tree .tn { display: inline-block; cursor: pointer; color: #1a3fa8; padding: 2px 6px; border-radius: 3px; }
-.dept-tree .tn.on { background: #1a86e0; color: #fff; }
+.dept-tree .tn { display: inline-block; cursor: pointer; color: #0000ff; padding: 2px 6px; border-radius: 3px; }
+.dept-tree .tn.on { background: #0d88e6; color: #fff; }
 .ctx-menu { position: fixed; background: #fff; border: 1px solid #889; box-shadow: 2px 2px 6px rgba(0,0,0,.25); z-index: 95000; min-width: 190px; }
 .ctx-menu button { display: block; width: 100%; text-align: right; background: none; border: 0; padding: 6px 12px; font: inherit; cursor: pointer; }
 .ctx-menu button:hover { background: #dbeaff; }
 .day-nav { display: flex; align-items: center; gap: 8px; padding: 4px; background: #e8ecf1; border: 1px solid #c8d0d8; }
 .day-nav #vp-day { color: #c00; font-weight: bold; margin-left: auto; }
 .day-nav button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; }
-.with-tree .band, .edit-punches .band { background: #1a86e0; color: #fff; text-align: center; font-weight: bold; padding: 3px; }
+.with-tree .band { font-size: 20px; height: 34px; line-height: 30px; }
+/* Apex «قوائم الأقسام والإدارات»: the tree is a plain framed box */
+.dept-win .dw-tree .dept-tree { border: 1px solid #a0a0a0; border-radius: 0; padding: 8px 10px; }
+.dept-win .dw-tree .dept-tree .tt { display: none; }
+.dlg.btns-left .btns { padding: 6px 4px 6px; gap: 6px; }
+.with-tree .band, .edit-punches .band { background: #0d88e6; color: #fff; text-align: center; font-weight: bold; padding: 3px; }
 .bar-search { margin-inline-start: auto; width: 220px; font: inherit; padding: 3px 6px; border: 1px solid #aeb7c0; }
 .edit-punches { display: flex; flex-direction: column; gap: 8px; padding: 8px; flex: 1; min-height: 0; }
-.edit-punches fieldset { border: 1px solid #f0a830; border-radius: 6px; margin: 0; padding: 6px 10px; background: #fff; }
-.edit-punches legend { color: #0b3fa8; font-weight: bold; }
+.edit-punches fieldset { border: 1px solid #ffa500; border-radius: 6px; margin: 0; padding: 6px 10px; background: #fff; }
+.edit-punches legend { color: #0000ff; font-weight: bold; }
 .edit-punches .pw { display: flex; gap: 10px; align-items: center; }
-.edit-punches .pw label { color: #0b3fa8; font-weight: bold; font-size: 15px; }
+.edit-punches .pw label { color: #0000ff; font-weight: bold; font-size: 15px; }
 .edit-punches .pw input { width: 260px; }
 .edit-punches .times { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .edit-punches .times .grid-wrap { flex: 1; min-height: 120px; }
 .edit-punches .t-in, .edit-punches .t-out { width: 80px; text-align: center; font-weight: bold; }
 /* Apex «ترحيل الحركات» / «الغاء ترحيل الحركات» */
 .post-win { display: flex; flex-direction: column; gap: 10px; padding: 8px 14px; }
-.post-win fieldset { border: 1px solid #f0a830; border-radius: 6px; margin: 0; padding: 8px 12px; background: #fff; display: flex; flex-direction: column; gap: 12px; }
-.post-win legend { color: #0b3fa8; font-weight: bold; padding: 0 6px; border: 1px solid #f0a830; border-radius: 4px; background: #fff; }
+.post-win fieldset { border: 1px solid #ffa500; border-radius: 6px; margin: 0; padding: 8px 12px; background: #fff; display: flex; flex-direction: column; gap: 12px; }
+.post-win legend { color: #0000ff; font-weight: bold; padding: 0 6px; border: 1px solid #ffa500; border-radius: 4px; background: #fff; }
 .post-win .codes { display: flex; gap: 14px; align-items: center; }
-.post-win .codes label, .post-win .per label, .post-win .act label { color: #0b3fa8; font-weight: bold; }
+.post-win .codes label, .post-win .per label, .post-win .act label { color: #0000ff; font-weight: bold; }
 .post-win .rng { display: inline-flex; gap: 6px; align-items: center; }
 .post-win .rng input { width: 80px; text-align: center; }
 .post-win .per { flex-direction: row; align-items: center; gap: 12px; }
 .post-win .per input { width: 180px; }
 .post-win .act { display: flex; gap: 12px; align-items: center; justify-content: flex-start; }
 .post-win #pw-count { width: 120px; text-align: center; background: #f2f3f5; }
-.post-win #pw-go { display: inline-flex; align-items: center; gap: 10px; padding: 8px 26px; font-size: 20px; color: #0b3fa8; border: 1px solid #333; background: #fff; cursor: pointer; margin-inline-start: auto; }
+.post-win #pw-go { display: inline-flex; align-items: center; gap: 10px; padding: 8px 26px; font-size: 20px; color: #0000ff; border: 1px solid #333; background: #fff; cursor: pointer; margin-inline-start: auto; }
 .post-win #pw-go svg { width: 26px; height: 26px; }
 .post-win .progress { height: 18px; border: 1px solid #aaa; border-radius: 4px; background: linear-gradient(#eee, #ccc); overflow: hidden; }
 .post-win #pw-bar { height: 100%; width: 0; background: linear-gradient(#5f5, #0b0); transition: width .2s; }
@@ -395,27 +464,40 @@ table.rep.month-grid td.sig { width: 70px; }
 .group-members .gm-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0; flex: 1; min-height: 0; border: 1px solid #333; }
 .group-members .gm-list { display: flex; flex-direction: column; min-height: 0; }
 .group-members .gm-list + .gm-list { border-inline-start: 1px solid #333; }
-.group-members .gm-head { background: #1e88e5; color: #fff; text-align: center; padding: 4px; font-size: 15px; }
+.group-members .gm-head { background: #0d88e6; color: #fff; text-align: center; padding: 4px; font-size: 15px; }
 .group-members .grid-wrap { flex: 1; min-height: 0; border: 0; }
 .group-members .gm-btns { display: flex; gap: 22px; align-items: center; }
 .group-members .gm-btns button { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; cursor: pointer; font-weight: bold; font-size: 13px; }
 .group-members .gm-btns svg { width: 26px; height: 26px; }
-.group-members .gm-q { color: #0b3fa8; font-size: 12px; }
+.group-members .gm-q { color: #0000ff; font-size: 12px; }
 /* Apex «قوائم الأقسام والإدارات» */
-.dept-win { display: flex; gap: 30px; padding: 10px; flex: 1; min-height: 0; }
+.dept-win { display: flex; gap: 30px; padding: 10px 0 0; flex: 1; min-height: 0; }
 .dept-win .dw-tree { display: flex; }
-.dept-win .dw-tree .dept-tree { width: 260px; }
-.dept-win .dw-form { grid-template-columns: 150px 240px; align-content: center; gap: 10px 12px; }
-.dept-win .dw-form label { color: #0b3fa8; }
+.dept-win .dw-tree .dept-tree { width: 295px; }
+.dept-win .dw-form { grid-template-columns: 160px 242px; align-content: center; justify-content: center; gap: 10px 26px; flex: 1; }
+.dept-win .dw-form label { color: #0000ff; }
 .dept-win .dw-form input { text-align: center; }
-.dept-win #dw-id, .dept-win #dw-parent { background: #eceef1; }
+.dept-win #dw-id { background: #eceef1; }
+/* Apex tree view: [−] boxes, folder / page icons, dotted connectors, selected node in blue */
+.apex-tree ul { list-style: none; margin: 0; padding: 0 18px 0 0; }
+.apex-tree > ul { padding: 0; }
+.apex-tree li { position: relative; padding: 1px 0 1px; }
+.apex-tree li li::before { content: ''; position: absolute; right: -11px; top: 0; height: 13px; width: 9px; border-right: 1px dotted #888; border-bottom: 1px dotted #888; }
+.apex-tree li:not(.open) > ul { display: none; }
+.apex-tree .tog { display: inline-block; width: 11px; height: 11px; line-height: 9px; font-size: 11px; text-align: center; border: 1px solid #919191; background: #fff; color: #333; margin-left: 3px; cursor: pointer; vertical-align: middle; }
+.apex-tree .tn { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: #0000ff; padding: 1px 3px; font-size: 16px; border-radius: 0; }
+.apex-tree .tn.on { background: #3399ff; color: #fff; }
+.apex-tree .ti { width: 16px; height: 16px; flex: none; }
 /* Apex «اعدادات الجهاز» */
 .dev-win { display: flex; flex-direction: column; gap: 10px; padding: 8px 10px; flex: 1; min-height: 0; }
-.dev-win fieldset { border: 1px solid #f0a830; border-radius: 6px; margin: 0; padding: 10px 12px; background: #fff; display: flex; gap: 30px; justify-content: space-between; }
-.dev-win legend { color: #0b3fa8; font-weight: bold; padding: 0 6px; border: 1px solid #f0a830; border-radius: 4px; background: #fff; }
+.dev-win fieldset { border: 1px solid #ffa500; border-radius: 6px; margin: 0; padding: 10px 12px; background: #fff; display: flex; gap: 30px; justify-content: space-between; }
+.dev-win legend { color: #0000ff; font-weight: bold; padding: 0 6px; border: 1px solid #ffa500; border-radius: 4px; background: #fff; }
 .dev-win .dv-main { grid-template-columns: 110px 300px; gap: 8px 10px; }
-.dev-win .dv-net { grid-template-columns: 100px 220px; gap: 8px 10px; align-content: start; background: #eceef1; border: 1px solid #999; padding: 10px; }
-.dev-win label { color: #0b3fa8; }
+.dev-win .dv-box { width: 340px; }
+.dev-win .dv-net { direction: ltr; grid-template-columns: 90px 220px; gap: 8px 10px; align-content: start; background: #eceef1; border: 1px solid #999; padding: 10px; }
+.dev-win .dv-net[hidden] { display: none; }
+.dev-win .dv-net label { font-weight: bold; direction: ltr; text-align: left; }
+.dev-win label { color: #0000ff; }
 .dev-win .req { color: #d11; }
 .dev-win input { text-align: center; }
 .dev-win #dv-id { background: #eceef1; }
@@ -428,28 +510,168 @@ table.rep.month-grid td.sig { width: 70px; }
 .grid-side { display: flex; gap: 10px; flex: 1; min-height: 0; padding: 0 6px 6px; }
 .grid-side .gs-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .grid-side .gs-main .grid-wrap { flex: 1; }
-.grid-caption { background: #1e88e5; color: #fff; text-align: center; font-size: 16px; padding: 3px; margin-top: 6px; }
-.list-types { width: 170px; border: 1px solid #f0a830; border-radius: 6px; margin: 0; padding: 4px 0; background: #fff; }
-.list-types legend { font-size: 12px; padding: 0 6px; border: 1px solid #f0a830; border-radius: 4px; background: #fff; margin-inline-start: auto; }
-.list-types .lt { padding: 8px 12px; border-bottom: 1px solid #e3e3e3; cursor: pointer; font-weight: bold; color: #222; }
-.list-types .lt.on { background: linear-gradient(#ffe0a8, #f6b24e); }
+.grid-caption { background: #0d88e6; color: #fff; text-align: center; font-size: 22px; font-weight: bold; padding: 1px; margin-top: 6px; }
+.list-types { width: 170px; border: 1px solid #ffa500; border-radius: 6px; margin: 0; padding: 4px 0; background: #fff; }
+.list-types legend { font-size: 18px; padding: 0 6px; border: 1px solid #ffa500; border-radius: 4px; background: #fff; margin-inline-start: auto; }
+.list-types .lt { padding: 9px 6px; border-bottom: 1px solid #e3e3e3; cursor: pointer; font-size: 16px; color: #000; }
+.list-types .lt.on { background: linear-gradient(#fbd59a, #f6b24e 70%, #fbd59a); }
 /* Apex «إضافه أجازات الموظفين» */
 .leave-dlg { display: flex; flex-direction: column; gap: 10px; }
 .leave-dlg .who { display: grid; grid-template-columns: 150px 70px 1fr; gap: 8px 10px; align-items: center; }
-.leave-dlg .who label { color: #0b3fa8; }
+.leave-dlg .who label { color: #0000ff; }
 .leave-dlg .who #lv-code { text-align: center; }
-.leave-dlg fieldset { border: 1px solid #f0a830; border-radius: 6px; margin: 0; padding: 8px 10px; }
-.leave-dlg legend { font-size: 12px; padding: 0 6px; border: 1px solid #f0a830; border-radius: 4px; }
-.leave-dlg .fields label { color: #0b3fa8; }
+.leave-dlg fieldset { border: 1px solid #ffa500; border-radius: 6px; margin: 0; padding: 8px 10px; }
+.leave-dlg legend { font-size: 12px; padding: 0 6px; border: 1px solid #ffa500; border-radius: 4px; }
+.leave-dlg .fields label { color: #0000ff; }
 .leave-dlg .req { color: #d11; }
 .post-win .rng[hidden] { display: none; }
+/* Apex «إعداد مواعيد العمل» */
+.st-apex { display: flex; flex-direction: column; gap: 8px; padding: 4px 4px 8px; flex: 1; min-height: 0; }
+.st-apex .st-group { text-align: center; color: var(--label); font-size: 16px; }
+.st-apex .st-tabs { display: flex; gap: 2px; }
+.st-apex .st-tabs button { flex: 1; height: 40px; font: inherit; font-size: 16px; font-weight: bold; background: #f0f0f0; border: 1px solid #888; border-bottom: 0; color: #000; cursor: pointer; }
+.st-apex .st-tabs button.on { background: #fff; border-width: 2px 2px 0; }
+.st-apex .st-tabs button:hover { background: #f0f0f0; }
+.st-apex .st-tabs button.on:hover { background: #fff; }
+/* Apex: the two check boxes in bold black, the other captions bold blue */
+.st-apex .st-row label { color: #0000ff; font-weight: bold !important; }
+.st-apex .st-row label.off { color: #000; }
+.st-apex .st-day { border: 3px solid #f0f0f0; margin-top: -8px; flex: 1; display: flex; flex-direction: column; }
+.st-apex .band { background: var(--caption-blue); color: #fff; text-align: center; font-size: 18px; height: 30px; line-height: 30px; }
+.st-apex .st-body { padding: 10px 18px; }
+.st-apex .st-row { display: flex; align-items: center; gap: 120px; margin-bottom: 10px; }
+.st-apex .st-row label { display: flex; align-items: center; gap: 10px; color: var(--label); }
+.st-apex #st-hours { width: 70px; text-align: center; }
+.st-apex #st-hours[readonly] { background: #fff; }
+.st-apex .st-grid { border-collapse: separate; border-spacing: 6px 4px; margin-right: 0; }
+.st-apex .st-grid th { color: #0000ff; font-weight: bold; font-size: 15px; text-align: center; padding: 0 4px; }
+.st-apex .st-grid tbody th { text-align: right; white-space: nowrap; padding-left: 14px; }
+.st-apex .st-grid input { width: 74px; height: 26px; text-align: center; }
+.st-apex .st-main { display: flex; gap: 10px; align-items: stretch; }
+.st-apex .st-main > div:first-child { flex: 1; }
+/* Apex «هام جدا» box */
+.st-apex .st-note { width: 190px; border: 1px solid #a0a0a0; padding: 6px 10px; font-size: 14px; line-height: 1.35; color: #000; }
+.st-apex .st-note b { display: block; color: #ff0000; font-size: 16px; }
+.st-apex .st-note p { margin: 4px 0 0; font-weight: bold; }
+.st-apex .st-grid input:disabled { background: #f3f3f3; }
+/* Apex «إلغاء الحركات المسحوبه خلال فترة» */
+.del-punches .pulled { display: flex; flex-direction: column; gap: 10px; padding: 10px 14px; }
+.del-punches .pulled .row { display: flex; align-items: center; gap: 14px; }
+.del-punches .pulled .row label { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.del-punches .pulled .row input { width: 190px; text-align: center; }
+.del-punches .pulled .row input.pw { width: 468px; }
+.del-punches .pulled #dp-go { align-self: flex-end; display: inline-flex; flex-direction: row-reverse; align-items: center; gap: 10px; height: 48px; padding: 0 10px; font-size: 20px; cursor: pointer; }
+.del-punches .pulled #dp-go svg { width: 30px; height: 30px; }
+/* Apex backup / restore windows: blue side panel on the right, the form beside it */
+.create-db .col { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.create-db .col fieldset { flex: none; }
+.backup-db .warn, .restore-db .warn { color: #8b0000; }
+.restore-db .notice { line-height: 1.7; }
+.restore-db .agree { align-self: flex-start; display: flex; gap: 6px; align-items: center; }
+.restore-db .file { display: flex; gap: 4px; }
+.restore-db .file input { flex: 1; text-align: left !important; font-size: 12px !important; }
+.restore-db .file button { width: 28px; }
+.create-db button#bk-go, .create-db button#rs-go { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 6px 20px; border: 1px solid #0000ff; background: #fff; cursor: pointer; }
+.create-db button svg { width: 24px; height: 24px; }
+/* Apex «صلاحيات المستخدمين» / «إدارة المستخدمين»: large band captions, centred entries */
+.roles .band, .users-apex .band { font-size: 20px; font-weight: normal; height: 30px; line-height: 28px; padding: 0; }
+.roles input[type=text], .users-apex input[type=text], .users-apex input[type=password] { text-align: center; }
+.roles .screens td:nth-child(3), .roles #ro-list td:nth-child(4) { text-align: center; }
+/* Apex «أذونات الموظفين» */
+.perm-apex { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; padding: 4px 4px 4px; }
+.perm-apex fieldset { margin: 0; padding: 6px 12px 8px; display: flex; align-items: center; gap: 12px; }
+.perm-apex .who #pm-code { width: 60px; text-align: center; }
+.perm-apex .who #pm-emp { width: 240px; }
+.perm-apex .when input { width: 200px; }
+.perm-apex .band { background: var(--caption-blue); color: #fff; text-align: center; font-size: 15px; height: 22px; line-height: 22px; }
+.perm-apex .cols { display: flex; gap: 14px; }
+.perm-apex .kind { flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 0 10px; }
+.perm-apex .kind > label { display: flex; align-items: center; gap: 8px; }
+.perm-apex .kind .times { display: flex; align-items: center; gap: 8px; }
+.perm-apex .kind .times input { width: 70px; text-align: center; }
+.perm-apex .kind .notes { display: flex; align-items: flex-start; gap: 8px; }
+.perm-apex .kind textarea { flex: 1; font: inherit; border: 1px solid var(--input); resize: none; }
+.perm-apex .day { width: 360px; flex-direction: column; align-items: stretch; }
+.perm-apex .day .grid-wrap { height: 140px; flex: none; }
+.perm-apex .grid-wrap.list { flex: 1; min-height: 120px; }
+/* Apex «الموظفون»: list + «بيانات الموظف» on the left, the الاقسـام tree down the right */
+.emp-apex { display: flex; gap: 6px; flex: 1; min-height: 0; padding: 0 0 4px; }
+.emp-apex .emp-main { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.emp-apex .band { background: var(--caption-blue); color: #fff; text-align: center; font-size: 20px; font-weight: bold; height: 30px; line-height: 30px; }
+.emp-apex .grid-wrap { flex: 1; min-height: 120px; margin: 0; }
+.emp-apex .dept-tree { width: 210px; flex: none; }
+.emp-apex .dept-tree .tt { font-size: 20px; color: #000; }
+/* Apex: the الاقسام tree on the right, in an orange frame with its caption on the line */
+.emp-apex fieldset.apex-tree { margin: 0; padding: 4px 8px; border: 1px solid #ffa500; border-radius: 6px; background: #fff; overflow: auto; }
+.emp-apex fieldset.apex-tree > legend, .dlg fieldset.apex-tree > legend { font-size: 20px; color: #000; padding: 0 6px; border: 1px solid #ffa500 !important; border-radius: 4px; background: #fff; margin-right: 4px; display: block; }
+.emp-apex .apex-tree .tn { font-size: 19px; }
+.emp-apex .apex-tree > ul > li { margin-bottom: 8px; }
+.dlg fieldset.apex-tree { margin: 0; border: 1px solid #a0a0a0; padding: 6px 10px; max-height: 360px; overflow: auto; }
+/* Apex «الإعدادات» panel dropped over the employee form by the cog */
+.emp-form { position: relative; }
+.emp-set { position: absolute; left: 8px; bottom: 6px; width: 330px; background: #fff; border: 2px solid var(--caption-blue); border-top: 0; z-index: 5; box-shadow: 0 2px 6px rgba(0,0,0,.25); padding-bottom: 12px; }
+.emp-set[hidden] { display: none; }
+.emp-set .es-cap { background: var(--caption-blue); color: #fff; text-align: center; font-size: 19px; font-weight: bold; height: 32px; line-height: 32px; position: relative; }
+.emp-set .es-x { position: absolute; left: 6px; top: 5px; width: 22px; height: 22px; padding: 0; background: #d40000 !important; color: #fff !important; border: 1px solid #800 !important; font-size: 13px; line-height: 18px; cursor: pointer; }
+.emp-set .es-warn { background: #800000; color: #fff; font-size: 14px; padding: 4px 8px; line-height: 1.4; }
+.emp-set .es-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px 0; color: #0000ff !important; font-size: 15px; cursor: pointer; }
+.emp-form { margin: 8px 0 0; padding: 10px 10px 12px; display: grid; grid-template-columns: 140px 1fr 140px 1fr; gap: 8px 10px; align-items: center; }
+.emp-form .req { color: #f00; font-style: normal; margin-right: 4px; }
+.emp-form input.code { width: 100px; }
+.emp-form input.wide { grid-column: 2 / -1; }
+.emp-form .set { display: flex; align-items: center; gap: 6px; }
+.emp-form .set span { color: #800000; font-size: 15px; }
+.emp-form #emp-settings { width: 40px; height: 30px; padding: 2px; display: flex; align-items: center; justify-content: center; }
+.emp-form #emp-settings svg { width: 22px; height: 22px; }
+/* Apex «إلغاء الحركات المعدله يدويا»: كلمه السر box in the toolbar row */
+.toolbar .bar-pass { flex: 1; display: flex; align-items: center; justify-content: center; gap: 40px; margin: 0 0 0 4px; padding: 0 10px; border-radius: 6px; }
+.toolbar .bar-pass input { width: 206px; }
+.del-punches { display: flex; flex-direction: column; gap: 6px; padding: 6px 4px; }
+.del-punches fieldset { margin: 0; padding: 4px 12px 8px; }
+.del-punches .fl-per { display: flex; gap: 10px; align-items: center; justify-content: center; }
+.del-punches .note { border: 1px solid var(--group); border-radius: 6px; padding: 4px 12px; color: #000; font-size: 14px; }
+.del-punches .fl-emp { display: grid; grid-template-columns: auto 220px; justify-content: start; gap: 4px 10px; align-items: center; }
+.del-punches .fl-emp .codes { display: flex; gap: 6px; align-items: center; }
+.del-punches .fl-emp .codes input { width: 70px; text-align: center; }
+/* Apex «الغاء جميع بيانات الموظف» */
+.purge-win { padding: 10px 4px; }
+.purge-win fieldset { display: flex; flex-direction: column; gap: 10px; padding: 10px 14px; margin: 0; }
+.purge-win .row { display: flex; align-items: center; gap: 14px; }
+.purge-win .row input { width: 140px; text-align: center; }
+.purge-win .row input#pe-pw { width: 342px; }
+.purge-win #pe-go { align-self: flex-end; display: inline-flex; flex-direction: row-reverse; align-items: center; gap: 10px; height: 48px; padding: 0 10px; font-size: 20px; cursor: pointer; }
+.purge-win #pe-go svg { width: 30px; height: 30px; }
+/* Apex «تعديل بيانات الدخول» */
+.change-login { display: flex; gap: 8px; padding: 10px 8px; }
+.change-login .fields { flex: 1; grid-template-columns: 170px 1fr; gap: 6px 10px; }
+.change-login .pw { display: flex; gap: 2px; }
+.change-login .pw input { flex: 1; }
+.change-login .eye { width: 22px; height: 26px; padding: 0; font-size: 11px; }
+.change-login .btns { display: flex; gap: 14px; }
+.change-login .btns button { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 99px; height: 36px; padding: 0 8px; }
+.change-login .btns button svg { width: 20px; height: 20px; }
+.change-login .avatar { width: 140px; height: 150px; }
 /* Apex «إنشاء قاعدة البيانات» */
 .create-db { display: flex; gap: 10px; padding: 8px 12px; }
-.create-db .side { width: 200px; background: #1e88e5; color: #fff; font-size: 20px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px; }
-.create-db fieldset { flex: 1; border: 1px solid #f0a830; border-radius: 6px; margin: 0; padding: 8px 12px; display: flex; flex-direction: column; gap: 10px; }
-.create-db legend { color: #222; padding: 0 6px; border: 1px solid #f0a830; border-radius: 4px; background: #fff; }
+.create-db .side { width: 200px; background: #0d88e6; color: #fff; font-size: 20px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px; }
+.create-db fieldset { flex: 1; border: 1px solid #ffa500; border-radius: 6px; margin: 0; padding: 8px 12px; display: flex; flex-direction: column; gap: 10px; }
+.create-db legend { color: #222; padding: 0 6px; border: 1px solid #ffa500; border-radius: 4px; background: #fff; }
 .create-db .warn { color: #8b0000; font-weight: bold; }
 .create-db .fields { grid-template-columns: 170px 1fr; gap: 8px 10px; }
-.create-db .fields label { color: #0b3fa8; }
+.create-db .fields label { color: #0000ff; }
 .create-db input { text-align: center; }
-.create-db #cd-go { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 6px 20px; border: 1px solid #0b3fa8; background: #fff; cursor: pointer; }
+.create-db #cd-go { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 6px 20px; border: 1px solid #0000ff; background: #fff; cursor: pointer; }
+.toolbar button:disabled svg { filter: grayscale(1); opacity: .55; }
+
+/* «الربط بالموقع»: six buttons → two rows inside the frame */
+.dlg.weblink .btns { flex-wrap: wrap; justify-content: center; gap: 6px; }
+.dlg.weblink .btns button { flex: 0 0 auto; }
+.perm-apex .times[hidden] { display: none; }
+
+/* Apex «إعدادات النظام»: one orange «إعدادات عامه» box */
+.sys-set.apex { padding: 8px 10px; display: block; overflow: auto; }
+.sys-set.apex fieldset { border: 1px solid #ffa500; border-radius: 6px; padding: 10px 12px 26px; margin: 0; }
+.sys-set.apex legend { color: #000; font-weight: bold; font-size: 17px; padding: 0 6px; border: 1px solid #ffa500; border-radius: 4px; background: #fff; }
+.sys-set.apex .row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.sys-set.apex .row > label { flex: 1; color: #0000ff; font-weight: normal; }
+.sys-set.apex .row input, .sys-set.apex .row select { width: 150px; text-align: center; }

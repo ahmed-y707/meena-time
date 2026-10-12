@@ -72,13 +72,17 @@ const DB = {
   },
 
   // «استرجاع نسخة احتياطية»: validate the file, then replace the database
-  async restore(bytes) {
+  // a database file written by this program (its main tables are there)
+  isBackup(bytes) {
     let test
     try {
       test = new this.sql.Database(new Uint8Array(bytes))
       const t = test.exec("SELECT name FROM sqlite_master WHERE type = 'table'")[0]?.values.flat() || []
-      if (!['employees', 'punches', 'users'].every((x) => t.includes(x))) return false
+      return ['employees', 'punches', 'users'].every((x) => t.includes(x))
     } catch { return false } finally { test?.close() }
+  },
+  async restore(bytes) {
+    if (!this.isBackup(bytes)) return false
     this.db = new this.sql.Database(new Uint8Array(bytes))
     this.migrate()
     this.audit('استرجاع نسخة احتياطية', '')
@@ -141,6 +145,22 @@ const DB = {
     this.migrateV2()
     this.migrateV3()
     this.migrateV4()
+    this.migrateV5()
+  },
+
+  // 2.0 — menu labels spelled as in Apex Time: saved permission keys and trial print
+  // counters follow the renamed screens
+  migrateV5() {
+    const MENU = { 'الإعدادات': 'الاعدادات', 'أدوات': 'ادوات', 'مساعدة': 'مساعده' }
+    const ITEM = { 'الموظفين': 'الموظفون', 'الغاء الحركات المعدلة يدويا': 'الغاء الحركات المعدله يدويا', 'إضافة إجازات لموظف': 'إضافة أجازات لموظف',
+      'بيانات المؤسسة': 'بيانات المؤسسه', 'إجازات الموظفين': 'أجازات الموظفين' }
+    const key = (k) => { const [m, ...rest] = k.split('/'); const it = rest.join('/'); return `${MENU[m] || m}/${ITEM[it] || it}` }
+    for (const r of this.all('SELECT id, perms FROM roles')) {
+      const p = JSON.parse(r.perms || '{}')
+      const q = Object.fromEntries(Object.entries(p).map(([k, v]) => [key(k), v]))
+      if (JSON.stringify(q) !== JSON.stringify(p)) this.db.run('UPDATE roles SET perms = ? WHERE id = ?', [JSON.stringify(q), r.id])
+    }
+    for (const [a, b] of Object.entries(ITEM)) this.db.run('UPDATE OR IGNORE print_counts SET report = ? WHERE report = ?', [b, a])
   },
 
   // 1.2 — Apex Time's permission model: named roles («صلاحيات المستخدمين») with
@@ -157,6 +177,9 @@ const DB = {
     addCol('punches', 'orig_ts', 'TEXT')
     addCol('devices', 'department_id', 'INTEGER')
     addCol('devices', 'conn_type', "TEXT DEFAULT 'TCP / IP'")
+    // Apex «نوع الجهاز» (1 ZKTeco …) and the Serial / Modem connection settings
+    addCol('devices', 'machine_type', 'INTEGER DEFAULT 1')
+    for (const c of ['s_com', 's_baud', 'm_com', 'm_baud', 'm_phone', 'm_dial']) addCol('devices', c, 'TEXT')
     this.db.run('CREATE TABLE IF NOT EXISTS punch_notes (emp_code TEXT NOT NULL, date TEXT NOT NULL, notes TEXT, PRIMARY KEY (emp_code, date))')
     if (!this.one('SELECT 1 FROM roles WHERE id = 1')) this.db.run("INSERT INTO roles (id, name_ar, name_en, builtin) VALUES (1, 'مدير النظام', 'Administrator', 1)")
     for (const u of this.all('SELECT * FROM users WHERE role_id IS NULL')) {
@@ -228,6 +251,11 @@ const DB = {
     // 1.1.4 — the site's attendance rules: holidays + weekly offs come from each employee's
     // holiday list; shifts without per-day windows use the site's simple rule (plain_rule)
     addCol('holidays', 'list_id', 'TEXT')
+    addCol('holidays', 'name_en', "TEXT DEFAULT ''") // Apex «الاسم الأجنبي»
+    addCol('employees', 'task_id', 'INTEGER') // Apex «المهمة» (from «قوائم البرنامج ← المهام»)
+    // Apex «الدوام ينتهي في اليوم التالي» / «نهاية اليوم» belong to the shift, not to a day
+    addCol('shift_groups', 'extended', 'INTEGER')
+    addCol('shift_groups', 'day_end', 'TEXT')
     addCol('employees', 'holiday_list', 'TEXT')
     addCol('shift_groups', 'plain_rule', 'INTEGER DEFAULT 0')
     this.db.run('CREATE TABLE IF NOT EXISTS web_weekly_offs (list_id TEXT NOT NULL, date TEXT NOT NULL, PRIMARY KEY (list_id, date))')

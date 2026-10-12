@@ -7,7 +7,7 @@ const Trial = {
     if (licence.ok) return true
     const n = DB.one('SELECT COUNT(*) AS n FROM employees').n
     if (n < this.MAX_EMPLOYEES) return true
-    await UI.message(`النسخة التجريبية تسمح بـ ${this.MAX_EMPLOYEES} موظفين فقط. سجّل البرنامج من «أدوات ← تسجيل المنتج» لإضافة المزيد.`)
+    await UI.message(`النسخة التجريبية تسمح بـ ${this.MAX_EMPLOYEES} موظفين فقط. سجّل البرنامج من «مساعده ← تسجيل المنتج» لإضافة المزيد.`)
     return false
   },
 }

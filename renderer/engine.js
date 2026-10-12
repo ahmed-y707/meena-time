@@ -7,9 +7,6 @@
 //  • late / early: threshold rule — once past the grace, counted from the official time.
 //  • open shift: required hours in the day (optionally running into the next day
 //    until «نهاية اليوم»); shortfall counts as early leave, surplus as overtime.
-//  • rotating shift: blocks of «عدد أيام الدوام» then «عدد أيام العطله», repeating
-//    from the group's start date; Ramadan blocks (if any) restart on Ramadan day 1.
-//  • Ramadan: a group's Ramadan timings apply inside a Ramadan period, else the year's.
 //  • no in-punch → «غياب» for past days, «في الانتظار» today (Apex keeps it waiting);
 //    holidays / leaves / weekly offs never count as absent; a permission covering a
 //    late/early gap cancels it.
@@ -71,41 +68,17 @@ const Engine = {
     const groups = Object.fromEntries(DB.all('SELECT * FROM shift_groups').map((g) => [g.id, g]))
     const win = {}
     for (const w of DB.all('SELECT * FROM shift_windows ORDER BY window_no')) ((win[w.group_id] ||= {})[`${w.calendar}:${w.slot}`] ||= []).push(w)
-    const blocks = {}
-    for (const b of DB.all('SELECT * FROM rotation_blocks ORDER BY idx')) ((blocks[b.group_id] ||= {})[b.calendar] ||= []).push(b)
-    const ramadan = DB.all('SELECT * FROM ramadan_periods ORDER BY from_date')
-    const hasRamadanTimes = Object.fromEntries(Object.entries(win).map(([gid, w]) => [gid, Object.keys(w).some((k) => k.startsWith('R:'))]))
-    return { groups, win, blocks, ramadan, hasRamadanTimes }
+    return { groups, win }
   },
+  // Apex: one weekly timetable per shift group
   schedule(cfg, groupId, date) {
     const g = cfg.groups[groupId]
     if (!g) return { kind: 'none' }
-    const rp = cfg.ramadan.find((r) => r.from_date <= date && r.to_date >= date)
-    if (g.rotational) {
-      const useR = rp && cfg.blocks[groupId]?.R?.length
-      const cal = useR ? 'R' : 'Y'
-      const bl = cfg.blocks[groupId]?.[cal] || []
-      const cycle = bl.reduce((s, b) => s + b.work_days + b.rest_days, 0)
-      if (!cycle) return { kind: 'none' }
-      const anchor = useR ? rp.from_date : g.start_date || date
-      let pos = ((this.diffDays(anchor, date) % cycle) + cycle) % cycle
-      for (const b of bl) {
-        if (pos < b.work_days) {
-          const rows = (cfg.win[groupId]?.[`${cal}:${b.idx}`] || []).filter((w) => !w.is_off)
-          return rows.length ? { kind: 'windows', windows: this.resolvedFor(cfg, `${groupId}:${cal}:${b.idx}`, rows) } : { kind: 'off' }
-        }
-        pos -= b.work_days
-        if (pos < b.rest_days) return { kind: 'off' }
-        pos -= b.rest_days
-      }
-      return { kind: 'off' }
-    }
     const day = this.DAY_INDEX(date)
-    const useR = rp && cfg.hasRamadanTimes[groupId]
-    const rows = cfg.win[groupId]?.[`${useR ? 'R' : 'Y'}:${day}`] || []
+    const rows = cfg.win[groupId]?.[`Y:${day}`] || []
     if (!rows.length || rows[0].is_off) return { kind: 'off' }
     if (g.open_shift) return { kind: 'open', open: rows[0] }
-    return { kind: 'windows', windows: this.resolvedFor(cfg, `${groupId}:${useR ? 'R' : 'Y'}:${day}`, rows) }
+    return { kind: 'windows', windows: this.resolvedFor(cfg, `${groupId}:${day}`, rows) }
   },
   resolvedFor(cfg, key, rows) { return ((cfg._resolved ||= {})[key] ||= this.resolveWindows(rows)) },
 

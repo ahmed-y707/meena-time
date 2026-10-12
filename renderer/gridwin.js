@@ -1,4 +1,7 @@
-// Generic Apex-Time-style editable grid window (the «مجموعات أوقات الدوام»
+// Generic Apex-Time-style editable grid window. Like Apex it is either adding (a numbered new row
+// at the bottom; جديد off, حفظ / إهمال on) or viewing (no new row; جديد on, حفظ / إهمال only once
+// something was edited). It opens adding; حفظ saves and opens the next new row; إهمال asks, drops
+// every unsaved change and switches to viewing; Enter saves quietly and moves on. (the «مجموعات أوقات الدوام»
 // pattern): toolbar مساعدة · [extra] · جديد · حفظ · إهمال · حذف · طباعة · إغلاق,
 // rows edited in place, committed with «حفظ», discarded with «إهمال».
 //
@@ -6,7 +9,10 @@
 //   id, title, table, width?, height?, help?, orderBy?,
 //   columns: [{ field, label, width?, type: 'text'|'en'|'check'|'select'|'date'|'time'|'readonly',
 //               options?: () => [[value, label]], format?: (v,row) => string, required? }],
-//   extraButtons?: [{ key, label, icon, onClick(ctx) }],   // placed after «مساعدة»
+//   extraButtons?: [{ key, label, icon, onClick(ctx), viewOnly? }], // after «مساعدة»; viewOnly: off while adding
+//   buttons?: ['new', 'save', …],                           // this window's Apex button sequence (keys)
+//   idLabel?: string,                                       // caption of the number column (default «#»)
+//   seqNo?: true,                                           // number the rows 1…n instead of showing the id
 //   beforeDelete?: (row) => string|null,                    // return a message to block
 //   onRowOpen?: (row) => void,                              // double-click
 //   deleteOnly?: true,                                      // list with «حذف» only (no new/edit)
@@ -23,6 +29,7 @@ function openGridWindow(cfg) {
     let rows = []
     let dirty = false
     let current = 0
+    let adding = !cfg.deleteOnly
 
     const blankRow = () => Object.fromEntries([['_state', 'blank'], ...cols.map((c) => [c.field, c.type === 'check' ? 0 : ''])])
     const load = () => {
@@ -30,7 +37,7 @@ function openGridWindow(cfg) {
       const sc = cfg.scope?.() || {}
       rows = DB.all(`SELECT ${fields} FROM ${cfg.table} ${sc.where ? `WHERE ${sc.where}` : ''} ORDER BY ${cfg.orderBy || 'id'}`, sc.params || []).map((r) => ({ ...r, _state: 'clean' }))
       dirty = false
-      current = Math.min(current, rows.length)
+      current = Math.min(current, adding ? rows.length : Math.max(0, rows.length - 1))
       if (cap) cap.textContent = cfg.caption()
       draw()
     }
@@ -40,27 +47,50 @@ function openGridWindow(cfg) {
       win,
     }
 
-    const bar = UI.toolbar([
-      { key: 'help', label: 'مساعدة', icon: 'help', onClick: () => UI.message(cfg.help || 'أدخل البيانات في السطر الفارغ ثم اضغط «حفظ».') },
+    const all = [
+      { key: 'help', label: 'مساعده', icon: 'help', onClick: () => UI.message(cfg.help || 'أدخل البيانات في السطر الفارغ ثم اضغط «حفظ».') },
       ...(cfg.extraButtons || []).map((b) => ({ ...b, onClick: () => b.onClick(ctx) })),
       ...(cfg.deleteOnly ? [] : [
-        { key: 'new', label: 'جديد', icon: 'new', onClick: () => { current = rows.filter((r) => r._state !== 'deleted').length; draw(); focusFirst() } },
-        { key: 'save', label: 'حفظ', icon: 'save', onClick: save },
-        { key: 'undo', label: 'إهمال', icon: 'undo', onClick: load },
+        { key: 'new', label: 'جديد', icon: 'new', onClick: startAdding },
+        { key: 'save', label: 'حفظ', icon: 'save', onClick: async () => {
+          if (!(await save())) return
+          startAdding()
+          await UI.message('تم حفظ البيانات بنجاح.')
+          focusFirst()
+        } },
+        { key: 'undo', label: 'إهمال', icon: 'undo', onClick: async () => {
+          if (!(await UI.dialog({ head: 'تأكيد', msg: true, bodyHtml: '<div class="msg-icon">i</div><div class="msg-text">سيتم حذف جميع التعديلات، هل أنت متأكد؟</div>', width: 360,
+            buttons: [{ label: 'موافق', icon: 'ok', onClick: (d) => d.close(true) }, { label: 'الغاء', icon: 'cancel', onClick: (d) => d.close(false) }] }))) return
+          adding = false
+          load()
+        } },
       ]),
       { key: 'del', label: 'حذف', icon: 'del', onClick: remove },
-      { key: 'print', label: 'طباعة', icon: 'print', onClick: () => UI.printGrid(cfg.title, wrap) },
+      { key: 'print', label: 'طباعه', icon: 'print', onClick: () => UI.printGrid(cfg.title, wrap) },
       { key: 'close', label: 'إغلاق', icon: 'close', onClick: async () => { if (!dirty || (await confirmDiscard())) win.close() } },
-    ])
+    ]
+    const bar = UI.toolbar(cfg.buttons ? cfg.buttons.map((k) => all.find((b) => b.key === k)).filter(Boolean) : all)
+    function startAdding() {
+      adding = true
+      current = rows.filter((r) => r._state !== 'deleted').length
+      draw()
+      focusFirst()
+    }
+    // Apex greys out جديد while adding, حفظ / إهمال while there is nothing to save or drop
+    function syncButtons() {
+      const off = { new: adding, save: !adding && !dirty, undo: !adding && !dirty }
+      for (const b of cfg.extraButtons || []) if (b.viewOnly) off[b.key] = adding
+      for (const b of bar.querySelectorAll('button[data-key]')) if (b.dataset.key in off) b.disabled = off[b.dataset.key] || !!b.dataset.permOff
+    }
     const head = cols.map((c, i) => `<th ${i === 0 ? 'class="sorted"' : ''} style="${c.width ? `width:${c.width}px` : ''}">${UI.esc(c.label)}</th>`).join('')
     const wrap = UI.el(`<div class="grid-wrap"><table class="grid"><thead><tr>
-        <th style="width:16px"></th><th style="width:34px">#</th>${head}</tr></thead><tbody></tbody></table></div>`)
+        <th style="width:16px"></th><th style="width:${cfg.idLabel ? 110 : 34}px">${UI.esc(cfg.idLabel || '#')}</th>${head}</tr></thead><tbody></tbody></table></div>`)
     const cap = cfg.caption ? UI.el('<div class="grid-caption"></div>') : null
     const main = [cap, wrap].filter(Boolean)
     if (cfg.side) {
       const box = UI.el('<div class="grid-side"><div class="gs-main"></div></div>')
       box.firstChild.append(...main)
-      box.append(cfg.side(ctx))
+      box.prepend(cfg.side(ctx)) // first in RTL = on the right, as Apex's «نوع القائمة»
       body.append(bar, box)
     } else body.append(bar, ...main)
     const tbody = wrap.querySelector('tbody')
@@ -75,22 +105,26 @@ function openGridWindow(cfg) {
           return `<td><select data-f="${c.field}" class="cell-select"><option value=""></option>${opts}</select></td>`
         }
         case 'date': return `<td><input type="date" data-f="${c.field}" value="${UI.esc(v)}" class="cell-date"></td>`
-        case 'time': return `<td><input type="text" data-f="${c.field}" dir="ltr" placeholder="00:00" maxlength="5" value="${UI.esc(v)}" class="center"></td>`
+        case 'time': return `<td><input type="text" data-f="${c.field}" data-time dir="ltr" maxlength="5" value="${UI.esc(v)}" class="center"></td>`
         default: return `<td><input type="text" data-f="${c.field}" ${c.type === 'en' ? 'dir="ltr"' : ''} value="${UI.esc(v)}"></td>`
       }
     }
 
     function draw() {
       tbody.innerHTML = ''
-      const all = [...rows.filter((r) => r._state !== 'deleted'), ...(cfg.deleteOnly ? [] : [blankRow()])]
+      const all = [...rows.filter((r) => r._state !== 'deleted'), ...(adding ? [blankRow()] : [])]
+      // the new row shows the number it will get, as in Apex
+      const nextNo = cfg.seqNo ? all.length : Math.max(0, ...rows.map((r) => +r.id || 0)) + 1
       all.forEach((r, i) => {
         const tr = UI.el(`<tr class="${i === current ? 'current' : ''} ${r._state === 'blank' ? 'new' : ''}">
-          <td class="sel"></td><td class="center">${r.id ?? ''}</td>${cols.map((c) => cell(c, r)).join('')}</tr>`)
-        tr.addEventListener('mousedown', () => {
+          <td class="sel"></td><td class="center">${r._state === 'blank' ? nextNo : cfg.seqNo ? i + 1 : r.id ?? ''}</td>${cols.map((c) => cell(c, r)).join('')}</tr>`)
+        const pick = () => {
           if (current === i) return
           current = i
           tbody.querySelectorAll('tr').forEach((x, j) => x.classList.toggle('current', j === i))
-        })
+        }
+        tr.addEventListener('mousedown', pick)
+        tr.addEventListener('focusin', pick) // also when Enter / Tab moves into the row
         if (cfg.onRowOpen && r._state !== 'blank') tr.addEventListener('dblclick', () => cfg.onRowOpen(r, ctx))
         tr.querySelectorAll('[data-f]').forEach((inp) => inp.addEventListener(inp.tagName === 'SELECT' || inp.type === 'checkbox' || inp.type === 'date' ? 'change' : 'input', () => {
           const v = inp.type === 'checkbox' ? (inp.checked ? 1 : 0) : inp.value
@@ -98,22 +132,42 @@ function openGridWindow(cfg) {
           else if (r._state === 'clean') r._state = 'changed'
           r[inp.dataset.f] = v
           dirty = true
+          syncButtons()
         }))
         tbody.appendChild(tr)
       })
+      syncButtons()
     }
     const focusFirst = () => tbody.querySelectorAll('tr')[current]?.querySelector('[data-f]')?.focus()
+    // Enter saves at once (when anything changed), then moves down a row in the same column; on the
+    // last row it opens a new empty row. A validation message keeps the cursor where it was.
+    tbody.addEventListener('keydown', async (e) => {
+      const inp = e.target.closest?.('[data-f]')
+      if (e.key !== 'Enter' || e.isComposing || !inp || UI.selPop) return
+      e.preventDefault()
+      const trs = [...tbody.querySelectorAll('tr')]
+      const i = trs.indexOf(inp.closest('tr')), field = inp.dataset.f
+      const filledBlank = i === trs.length - 1 && rows.filter((r) => r._state !== 'deleted').length >= trs.length
+      if (i === trs.length - 1 && !filledBlank) return // still-empty new row: nothing to do
+      if (dirty && !(await save())) return
+      current = Math.min(i + 1, tbody.querySelectorAll('tr').length - 1)
+      draw()
+      const tr = tbody.querySelectorAll('tr')[current]
+      ;(tr?.classList.contains('new') ? tr.querySelector('[data-f]') : tr?.querySelector(`[data-f="${field}"]`) || tr?.querySelector('[data-f]'))?.focus()
+    })
 
+    // → true when everything was saved (Enter only moves on then)
     async function save() {
-      if (WebSync.blocks(cfg.table)) return load()
+      const fail = (m) => { UI.message(m); return false }
+      if (WebSync.blocks(cfg.table)) { load(); return false }
       for (const r of rows) {
         if (r._state === 'deleted') continue
         for (const c of cols) {
-          if (c.required && !String(r[c.field] ?? '').trim()) return UI.message(`${c.label} مطلوب`)
-          if (c.type === 'time' && r[c.field] && !/^([01]\d|2[0-3]):[0-5]\d$/.test(r[c.field])) return UI.message(`${c.label}: الوقت يجب أن يكون بصيغة HH:MM`)
+          if (c.required && !String(r[c.field] ?? '').trim()) return fail(`${c.label} مطلوب`)
+          if (c.type === 'time' && r[c.field] && !/^([01]\d|2[0-3]):[0-5]\d$/.test(r[c.field])) return fail(`${c.label}: الوقت يجب أن يكون بصيغة HH:MM`)
         }
         const err = cfg.validate?.(r)
-        if (err) return UI.message(err)
+        if (err) return fail(err)
       }
       const val = (c, r) => (c.type === 'check' ? (r[c.field] ? 1 : 0) : typeof r[c.field] === 'string' ? r[c.field].trim() : r[c.field] ?? '')
       const saveCols = editable.filter((c) => !c.virtual)
@@ -130,12 +184,13 @@ function openGridWindow(cfg) {
         DB.run('COMMIT')
       } catch (e) {
         DB.run('ROLLBACK')
-        return UI.message(/UNIQUE/.test(e.message) ? 'القيمة مكررة — يوجد سجل بنفس البيانات' : `تعذّر الحفظ: ${e.message}`)
+        return fail(/UNIQUE/.test(e.message) ? 'القيمة مكررة — يوجد سجل بنفس البيانات' : `تعذّر الحفظ: ${e.message}`)
       }
       DB.audit('حفظ', cfg.title, rows.filter((r) => r._state !== 'clean').map((r) => `${r._state}:${r.id ?? ''}`).join(' '))
       await DB.flush()
       cfg.afterSave?.()
       load()
+      return true
     }
 
     async function remove() {

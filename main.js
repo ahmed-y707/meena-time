@@ -1,6 +1,6 @@
 // Electron main process: one window, the database file in the user's data
 // folder (no XAMPP, no fixed drive), and the licence check.
-const { app, BrowserWindow, ipcMain, Menu, dialog, safeStorage } = require('electron')
+const { app, BrowserWindow, ipcMain, Menu, dialog, safeStorage, screen } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { requestCode, verifyLicence } = require('./lib/license')
@@ -34,6 +34,25 @@ function createWindow() {
     backgroundColor: '#3fc1e9',
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  })
+  win.maximize() // Apex Time opens maximized
+  // a bigger, «zoomed-in» program: 125 % where the screen is wide enough for the widest windows
+  // (≈1110 px); Ctrl + / Ctrl − / Ctrl 0 adjust it and the choice is kept
+  const zoomFile = path.join(dataDir(), 'zoom.json')
+  const fit = Math.max(1, Math.min(1.25, screen.getPrimaryDisplay().workAreaSize.width / 1110))
+  let zoom = fit
+  try { zoom = JSON.parse(fs.readFileSync(zoomFile, 'utf8')).zoom || fit } catch {}
+  const setZoom = (z) => { zoom = Math.round(Math.min(2, Math.max(0.6, z)) * 100) / 100; win.webContents.setZoomFactor(zoom) }
+  win.webContents.on('did-finish-load', () => setZoom(zoom))
+  win.webContents.on('before-input-event', (e, i) => {
+    if (i.type !== 'keyDown' || !i.control) return
+    const k = i.key
+    if (k === '=' || k === '+') setZoom(zoom + 0.1)
+    else if (k === '-') setZoom(zoom - 0.1)
+    else if (k === '0') setZoom(fit)
+    else return
+    e.preventDefault()
+    try { fs.writeFileSync(zoomFile, JSON.stringify({ zoom })) } catch {}
   })
   Menu.setApplicationMenu(null) // the app draws its own Arabic menu bar
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
@@ -140,7 +159,7 @@ ipcMain.handle('db:pick', async (e) => {
   const { canceled, filePaths } = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
     title: 'اختر ملف النسخة الاحتياطية', filters: [{ name: 'Meena Time DB', extensions: ['sqlite'] }], properties: ['openFile'],
   })
-  return canceled || !filePaths[0] ? null : fs.readFileSync(filePaths[0])
+  return canceled || !filePaths[0] ? null : { path: filePaths[0], bytes: fs.readFileSync(filePaths[0]) }
 })
 ipcMain.handle('app:relaunch', () => { app.relaunch(); app.exit(0) })
 ipcMain.handle('paths', () => ({ data: dataDir(), backups: path.join(dataDir(), 'backups') }))
@@ -237,7 +256,7 @@ ipcMain.handle('print:html', async (e, html) => {
   try {
     await w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
     return await new Promise((resolve) => w.webContents.print({ printBackground: true }, (ok, reason) =>
-      resolve(ok || /cancel/i.test(reason || '') ? { ok } : { ok: false, error: `تعذّرت الطباعة (${reason || 'لا توجد طابعة'}) — يمكنك الحفظ PDF بدلاً منها` })))
+      resolve(ok || /cancel/i.test(reason || '') ? { ok } : { ok: false, error: `تعذّرت الطباعة (${reason || 'لا توجد طابعة'})` })))
   } finally {
     w.destroy()
   }

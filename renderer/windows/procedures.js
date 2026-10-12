@@ -4,26 +4,6 @@ const empOptions = () => DB.all("SELECT id, code, name_ar FROM employees ORDER B
 const yesNo = (head, text) => UI.dialog({ head, bodyHtml: `<div>${text}</div>`, width: 380,
   buttons: [{ label: 'نعم', icon: 'ok', onClick: (d) => d.close(true) }, { label: 'لا', icon: 'cancel', onClick: (d) => d.close(false) }] })
 
-// A small modal with a date range (+ optional extra fields) — resolves {from, to, ...} or null.
-function periodDialog(head, { extra = '', read = () => ({}) } = {}) {
-  return UI.dialog({
-    head, width: 440,
-    bodyHtml: `<div class="fields" style="grid-template-columns:90px 1fr">
-      <label>من تاريخ</label><input type="date" id="pd-from" value="${monthStart()}">
-      <label>إلى تاريخ</label><input type="date" id="pd-to" value="${Engine.today()}">${extra}</div>`,
-    buttons: [
-      { label: 'موافق', icon: 'ok', onClick: (d) => {
-        const from = d.root.querySelector('#pd-from').value, to = d.root.querySelector('#pd-to').value
-        if (!from || !to || from > to) return d.error('فترة غير صحيحة')
-        const more = read(d.root)
-        if (more === false) return
-        d.close({ from, to, ...more })
-      } },
-      { label: 'الغاء', icon: 'cancel', onClick: (d) => d.close(null) },
-    ],
-  })
-}
-
 // ── import ─────────────────────────────────────────────────
 // Accepts ZKTeco attlog/.dat ("  1001\t2026-09-24 08:01:02\t1\t0…"), CSV
 // ("1001,2026-09-24 08:01") and dd/mm/yyyy variants. Returns [{code, ts}].
@@ -87,7 +67,7 @@ function openReadPunches() {
     let files = []
     const bar = UI.toolbar([{ key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() }])
     const view = UI.el(`<div class="read-punches">
-      <fieldset class="per"><legend>الفتـــرة</legend><label>مـــن</label><input type="date" id="rp-from" value="${monthStart()}"><label>إلـــى</label><input type="date" id="rp-to" value="${Engine.today()}"><label class="rp-allp"><input type="checkbox" id="rp-allp"> كل الفترات</label></fieldset>
+      <fieldset class="per"><legend>الفتـــرة</legend><label>مـــن</label><input type="date" id="rp-from" value="${monthStart()}"><label>إلـــى</label><input type="date" id="rp-to" value="${Engine.today()}"></fieldset>
       <div class="cols">
         <fieldset class="devs"><legend>سـحب بيانـات الاجـهزة بالـشبكة</legend>
           <div class="grid-wrap"><table class="grid"><thead><tr><th style="width:28px"><input type="checkbox" id="rp-all"></th><th style="width:50px">الرقم</th><th>الجهاز</th><th style="width:40px"></th></tr></thead>
@@ -105,10 +85,7 @@ function openReadPunches() {
     </div>`)
     body.append(bar, view)
     const $ = (s) => view.querySelector(s)
-    // «كل الفترات»: keep every punch stored on the device / in the file, whatever its date
-    $('#rp-allp').addEventListener('change', (e) => { $('#rp-from').disabled = $('#rp-to').disabled = e.target.checked })
     const period = () => {
-      if ($('#rp-allp').checked) return {}
       const from = $('#rp-from').value, to = $('#rp-to').value
       if (!from || !to || from > to) { UI.message('فترة غير صحيحة'); return null }
       return { from, to }
@@ -127,6 +104,8 @@ function openReadPunches() {
       const total = { added: 0, texts: [] }
       for (const id of ids) {
         const dev = devices.find((x) => x.id === id)
+        const no = deviceNotReadable(dev)
+        if (no) { total.texts.push(no); continue }
         $('#rp-msg').textContent = `جاري الاتصال بالجهاز ${dev.name}…`
         const res = await window.bridge.readDevice({ ip: dev.ip, port: +dev.port || 4370 })
         if (!res.ok) { total.texts.push(`${dev.name}: ${res.error || 'تعذّر الاتصال بالجهاز'}`); continue }
@@ -174,28 +153,36 @@ const DAY_AR = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء'
 // «عرض الحركات» — Apex's «استعراض بيانات آله الحضور و الانصراف»: one day, departments
 // tree, السابق / التاريخ / التالي, حضور · انصراف · مرحل · معدل · مضاف; double-click edits.
 function openViewPunches() {
-  UI.openWindow('view-punches', 'عرض الحركات', { width: 980, height: 520 }, (body, win) => {
+  UI.openWindow('view-punches', 'استعراض بيانات آله الحضور و الانصراف', { width: 1066, height: 600 }, (body, win) => {
     let date = Engine.today(), dep = null, q = '', current = null
     const bar = UI.toolbar([
-      { key: 'search', label: 'بحـث', icon: 'undo', onClick: () => search.focus() },
+      { key: 'search', label: 'بحـث', icon: 'search', onClick: find },
       { key: 'add', label: 'إضافة حركة', icon: 'new', onClick: () => openEditPunches({ empId: current?.id, date }, load) },
-      { key: 'undo', label: 'إهمال', icon: 'cancel', onClick: () => { q = ''; search.value = ''; load() } },
+      { key: 'undo', label: 'إهمال', icon: 'cancel', onClick: () => { q = ''; load() } },
       { key: 'print', label: 'طباعة', icon: 'print', onClick: () => UI.printGrid(`عرض الحركات — ${date}`, body) },
       { key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() },
     ])
-    const search = UI.el('<input type="text" placeholder="بحث برقم الموظف أو اسمه" class="bar-search">')
-    search.addEventListener('input', () => { q = search.value.trim(); load() })
-    bar.appendChild(search)
-    const tree = UI.deptTree((id, name) => { dep = id; band.textContent = id ? name : 'كل الأقسام'; load() })
-    const band = UI.el('<div class="band">كل الأقسام</div>')
+    // Apex «بحـث»: by employee number or name; «إهمال» clears it
+    async function find() {
+      const s = await UI.dialog({ head: 'بحث', width: 360,
+        bodyHtml: `<div class="fields" style="grid-template-columns:110px 1fr"><label>رقم الموظف أو اسمه</label><input type="text" id="vp-q" value="${UI.esc(q)}"></div>`,
+        buttons: [{ label: 'موافق', icon: 'ok', onClick: (d) => d.close(d.root.querySelector('#vp-q').value.trim()) }, { label: 'الغاء', icon: 'cancel', onClick: (d) => d.close(null) }] })
+      if (s === null) return
+      q = s
+      load()
+    }
+    // Apex: the الاقسام tree on the right (as in «الموظفون»), first department selected
+    const unplaced = !!DB.one("SELECT 1 FROM employees WHERE status = 'نشط' AND department_id IS NULL AND section_id IS NULL LIMIT 1")
+    const tree = UI.deptTree((id, name) => { dep = id; band.textContent = name; load() }, { title: 'الاقسام', apex: true, none: unplaced })
+    const band = UI.el('<div class="band">كل الحركات</div>')
     const nav = UI.el(`<div class="day-nav"><span id="vp-day"></span>
       <button id="vp-prev">➜ <span>السابق</span></button><input type="date" id="vp-date"><button id="vp-next"><span>التالي</span> ⬅</button></div>`)
     const wrap = UI.el(`<div class="grid-wrap"><table class="grid"><thead><tr><th style="width:16px"></th><th style="width:90px" class="sorted">رقم الموظف</th><th>اسم الموظف</th>
       <th style="width:80px">حضور</th><th style="width:80px">انصراف</th><th style="width:55px">مرحل</th><th style="width:55px">معدل</th><th style="width:55px">مضاف</th></tr></thead><tbody></tbody></table></div>`)
     const main = UI.el('<div class="main-col"></div>')
     main.append(band, nav, wrap)
-    const layout = UI.el('<div class="with-tree"></div>')
-    layout.append(main, tree)
+    const layout = UI.el('<div class="with-tree emp-apex"></div>')
+    layout.append(tree, main) // RTL: tree on the right
     body.append(bar, layout)
     const tb = wrap.querySelector('tbody'), $ = (s) => nav.querySelector(s)
     const go = (n) => { date = Engine.addDays(date, n); load() }
@@ -205,7 +192,7 @@ function openViewPunches() {
       $('#vp-date').value = date
       $('#vp-day').textContent = `${DAY_AR[Engine.DAY_INDEX(date)]} ${date}`
       const ids = UI.deptIds(dep), like = `%${q}%`
-      const emps = DB.all(`SELECT * FROM employees WHERE status = 'نشط' ${ids ? `AND (department_id IN (${ids}) OR section_id IN (${ids}))` : ''}
+      const emps = DB.all(`SELECT * FROM employees WHERE status = 'نشط' ${dep === 0 ? 'AND department_id IS NULL AND section_id IS NULL' : ids ? `AND (department_id IN (${ids}) OR section_id IN (${ids}))` : ''}
         AND (? = '' OR code LIKE ? OR name_ar LIKE ?) ORDER BY CAST(code AS INTEGER), code`, [q, like, like])
       const posted = new Set(DB.all('SELECT employee_id FROM posted_attendance WHERE date = ?', [date]).map((x) => x.employee_id))
       const byCode = {}
@@ -223,7 +210,8 @@ function openViewPunches() {
         tb.appendChild(tr)
       }
     }
-    load()
+    if (DB.one("SELECT 1 FROM departments LIMIT 1") || unplaced) tree.selectFirst()
+    else load()
   })
 }
 
@@ -268,8 +256,8 @@ function openEditPunches({ empId = null, date = Engine.today() } = {}, onDone = 
       const posted = Engine.isPosted($('#ep-date').value, emp()?.code)
       const flag = (on) => `<input type="checkbox" disabled ${on ? 'checked' : ''}>`
       tb.innerHTML = rows.map((r, i) => `<tr data-i="${i}" class="${i === selected ? 'current' : ''}"><td class="sel"></td>
-        <td class="center"><input type="text" class="t-in" dir="ltr" maxlength="5" value="${r.in}" ${posted ? 'disabled' : ''}></td>
-        <td class="center"><input type="text" class="t-out" dir="ltr" maxlength="5" value="${r.out}" ${posted ? 'disabled' : ''}></td>
+        <td class="center"><input type="text" class="t-in" data-time dir="ltr" maxlength="5" value="${r.in}" ${posted ? 'disabled' : ''}></td>
+        <td class="center"><input type="text" class="t-out" data-time dir="ltr" maxlength="5" value="${r.out}" ${posted ? 'disabled' : ''}></td>
         <td class="center">${flag(posted)}</td><td class="center">${flag(r.pin?.orig_ts || r.pout?.orig_ts)}</td>
         <td class="center">${flag(r.new || (r.pin?.source === 'manual' && !r.pin?.orig_ts))}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">لا توجد حركات — «إضافة» لإدخال حضور وانصراف</td></tr>'
       tb.querySelectorAll('tr[data-i]').forEach((tr) => tr.addEventListener('mousedown', () => { selected = +tr.dataset.i; tb.querySelectorAll('tr').forEach((x) => x.classList.toggle('current', x === tr)) }))
@@ -328,28 +316,68 @@ function openEditPunches({ empId = null, date = Engine.today() } = {}, onDone = 
   })
 }
 
-async function deletePunchesInPeriod(sources, title) {
-  const p = await periodDialog(title, {
-    extra: `<label>من رقم موظف</label><input type="text" id="pd-cf" dir="ltr" placeholder="الكل"><label>إلى رقم موظف</label><input type="text" id="pd-ct" dir="ltr" placeholder="الكل">`,
-    read: (root) => {
-      const cf = root.querySelector('#pd-cf').value.trim(), ct = root.querySelector('#pd-ct').value.trim()
-      if ((cf && !/^\d+$/.test(cf)) || (ct && !/^\d+$/.test(ct))) { UI.message('أرقام الموظفين: أرقام فقط'); return false }
-      return { cf, ct }
-    },
+// Apex «إلغاء الحركات المعدله يدويا»: الغاء · إغلاق with «كلمه السر» beside them, then
+// «الفتـــرة» and the «الموظفـــون» criteria. Apex «إلغاء الحركات المسحوبه خلال فترة»: الفتـــرة,
+// then أرقام الموظفين · كلمة مرور مدير النظام · «الغاء البيانات».
+function openDeletePunches(sources, title) {
+  const manual = sources.includes('manual')
+  UI.openWindow(`del-punches-${sources.join('-')}`, title, { width: manual ? 732 : 770, height: manual ? 420 : 400 }, (body, win) => {
+    const bar = UI.toolbar([
+      ...(manual ? [{ key: 'del', label: 'الغاء', icon: 'del', onClick: go }] : []),
+      { key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() },
+    ])
+    if (manual) bar.prepend(UI.el('<fieldset class="bar-pass"><label>كلمه السر</label><input type="password" id="dp-pw"></fieldset>'))
+    const period = `<fieldset class="fl-per"><legend>الفتـــرة</legend><label>مـــن</label><input type="date" id="dp-from" value="${monthStart()}">
+        <label>إلـــى</label><input type="date" id="dp-to" value="${Engine.today()}"></fieldset>`
+    const view = UI.el(manual ? `<div class="del-punches">${period}
+      <div class="note">ه في حالة إلغاء الحركات المعدله يدويا يجب قراءه الحركات من الماكينه.</div>
+      ${empFilterHtml()}</div>` : `<div class="del-punches">${period}
+      <fieldset class="pulled"><legend>الغاء الحركات المسحوبة</legend>
+        <div class="row"><label><input type="checkbox" id="dp-codes"> أرقـام الموظفيـن</label><span>مـن</span><input type="text" id="dp-cf" dir="ltr" disabled><span>إلـى</span><input type="text" id="dp-ct" dir="ltr" disabled></div>
+        <div class="row"><label>كلمة مرور مدير النظام</label><input type="password" id="dp-pw" class="pw"></div>
+        <button type="button" id="dp-go">${ICONS.del}<span>الغاء البيانات</span></button></fieldset></div>`)
+    body.append(bar, view)
+    const $ = (q) => body.querySelector(q)
+    if (manual) wireEmpFilter(view)
+    else {
+      $('#dp-codes').onchange = () => { $('#dp-cf').disabled = $('#dp-ct').disabled = !$('#dp-codes').checked }
+      $('#dp-go').onclick = go
+    }
+    async function go() {
+      const from = $('#dp-from').value, to = $('#dp-to').value
+      if (!from || !to || from > to) return UI.message('فترة غير صحيحة')
+      let q
+      if (manual) q = readEmpFilter(view)
+      else {
+        const on = $('#dp-codes').checked, cf = $('#dp-cf').value.trim(), ct = $('#dp-ct').value.trim()
+        q = (cf && !/^\d+$/.test(cf)) || (ct && !/^\d+$/.test(ct)) ? null : { codeFrom: on && cf, codeTo: on && ct }
+      }
+      if (!q) return UI.message('أرقام الموظفين: أرقام فقط')
+      // «كلمه السر» = the user's own; «كلمة مرور مدير النظام» = any administrator's
+      const pw = $('#dp-pw').value
+      const pwOk = async () => {
+        if (manual) { const u = DB.one('SELECT password FROM users WHERE id = ?', [Session.userId]); return !!u && checkPassword(u.password, pw) }
+        for (const a of DB.all('SELECT u.password FROM users u JOIN roles r ON r.id = u.role_id WHERE r.builtin = 1')) if (await checkPassword(a.password, pw)) return true
+        return false
+      }
+      if (!(await pwOk())) return UI.message(manual ? 'كلمه السر غير صحيحة' : 'كلمة مرور مدير النظام غير صحيحة')
+      const ids = reportEmployeeIds(q)
+      if (ids && !ids.length) return UI.message('لا يوجد موظفين بهذه الشروط')
+      const empIn = ids ? ` AND employee_id IN (${ids.join(',')})` : ''
+      if (DB.one(`SELECT 1 FROM posted_attendance WHERE date BETWEEN ? AND ?${empIn} LIMIT 1`, [from, to])) return UI.message('الفترة تتداخل مع فترة مرحّلة — الغِ الترحيل أولاً')
+      // while linked, punches already on the site are deleted there (they follow here on the next sync)
+      const codes = ids ? ` AND emp_code IN (SELECT code FROM employees WHERE id IN (${ids.join(',')}))` : ''
+      const where = `ts BETWEEN ? AND ? AND source IN (${sources.map(() => '?').join(',')})${codes}${WebSync.linked ? " AND (web_id IS NULL OR web_id = 'dup')" : ''}`
+      const n = DB.one(`SELECT COUNT(*) AS n FROM punches WHERE ${where}`, [from, to + ' 99', ...sources]).n
+      if (!n) return UI.message('لا توجد حركات في هذه الفترة')
+      if (!(await yesNo('تأكيد', `سيتم حذف ${n} حركة. متابعة؟`))) return
+      DB.run(`DELETE FROM punches WHERE ${where}`, [from, to + ' 99', ...sources])
+      DB.audit(title, `${from} → ${to}${ids ? ` · ${ids.length} موظف` : ''}`, `${n} حركة`)
+      await DB.flush()
+      $('#dp-pw').value = ''
+      UI.message(`تم حذف ${n} حركة`)
+    }
   })
-  if (!p) return
-  if (DB.one(`SELECT 1 FROM posted_attendance pa JOIN employees e ON e.id = pa.employee_id WHERE pa.date BETWEEN ? AND ?${p.cf ? ` AND CAST(e.code AS INTEGER) >= ${+p.cf}` : ''}${p.ct ? ` AND CAST(e.code AS INTEGER) <= ${+p.ct}` : ''} LIMIT 1`, [p.from, p.to])) return UI.message('الفترة تتداخل مع فترة مرحّلة — الغِ الترحيل أولاً')
-  // while linked, punches already on the site are deleted there (they follow here on the next sync)
-  const codes = (p.cf ? ` AND CAST(emp_code AS INTEGER) >= ${+p.cf}` : '') + (p.ct ? ` AND CAST(emp_code AS INTEGER) <= ${+p.ct}` : '')
-  const where = `ts BETWEEN ? AND ? AND source IN (${sources.map(() => '?').join(',')})${codes}${WebSync.linked ? " AND (web_id IS NULL OR web_id = 'dup')" : ''}`
-  const n = DB.one(`SELECT COUNT(*) AS n FROM punches WHERE ${where}`, [p.from, p.to + ' 99', ...sources]).n
-  if (!n) return UI.message('لا توجد حركات في هذه الفترة')
-  if (!(await askPassword(title))) return
-  if (!(await yesNo('تأكيد', `سيتم حذف ${n} حركة. متابعة؟`))) return
-  DB.run(`DELETE FROM punches WHERE ${where}`, [p.from, p.to + ' 99', ...sources])
-  DB.audit(title, `${p.from} → ${p.to}${p.cf || p.ct ? ` · أرقام ${p.cf || '…'}–${p.ct || '…'}` : ''}`, `${n} حركة`)
-  await DB.flush()
-  UI.message(`تم حذف ${n} حركة`)
 }
 
 // Apex «أجازات الموظفين» list (جديد · تعديل · بحث · إهمال · حذف · طباعه · إغلاق) and the
@@ -408,7 +436,7 @@ async function leaveDialog(leave, onDone) {
   const types = listOptions('leave')()
   const o = (list, v) => list.map(([k, l]) => `<option value="${k}" ${String(k) === String(v ?? '') ? 'selected' : ''}>${UI.esc(l)}</option>`).join('')
   const r = await UI.dialog({
-    head: 'إضافه أجازات الموظفين', width: 680,
+    head: 'إضافه أجازات الموظفين', width: 680, hideBehind: true,
     bodyHtml: `<div class="leave-dlg">
       <div class="who"><label><input type="radio" name="lv-w" value="e" checked> الموظف</label><input type="text" id="lv-code" dir="ltr" value="${UI.esc(emps.find((e) => e.id === leave?.employee_id)?.code || '')}">
         <select id="lv-emp"><option value=""></option>${o(emps.map((e) => [e.id, e.name_ar]), leave?.employee_id)}</select>
@@ -455,18 +483,152 @@ async function leaveDialog(leave, onDone) {
   UI.message(r.g ? `تمت إضافة الإجازة لـ ${ids.length} موظف` : 'تم الحفظ')
 }
 
+// Apex «أذونات الموظفين»: بيانات الموظف · بيانات الإذن · نــوع الإذن (يوم كامل / حضور متأخر /
+// انصراف مبكر fill the times from that day's work times, shown in «مواعيد العمل لليوم») · the list.
+// The engine excuses the late / early minutes inside من → إلى.
 function openPermissions() {
-  openGridWindow({
-    id: 'permissions', title: 'إضافة أذونات لموظف', table: 'permissions', orderBy: 'date DESC', width: 800,
-    help: 'الإذن يلغي التأخير أو الانصراف المبكر الواقع داخل وقته.',
-    columns: [
-      { field: 'employee_id', label: 'الموظف', type: 'select', options: empOptions, required: true },
-      { field: 'type_id', label: 'نوع الإذن', type: 'select', width: 130, options: listOptions('permission') },
-      { field: 'date', label: 'التاريخ', type: 'date', width: 130, required: true },
-      { field: 'from_time', label: 'من', type: 'time', width: 70, required: true },
-      { field: 'to_time', label: 'إلى', type: 'time', width: 70, required: true },
-      { field: 'notes', label: 'ملاحظات' },
-    ],
+  UI.openWindow('permissions', 'أذونات الموظفين', { width: 910, height: 640 }, (body, win) => {
+    let current = null, q = ''
+    const bar = UI.toolbar([
+      { key: 'new', label: 'جديد', icon: 'new', onClick: () => select(null) },
+      { key: 'save', label: 'حفظ', icon: 'save', onClick: save },
+      { key: 'search', label: 'بحث', icon: 'search', onClick: search },
+      { key: 'del', label: 'حذف', icon: 'del', onClick: remove },
+      { key: 'print', label: 'طباعه', icon: 'print', onClick: () => UI.printGrid('أذونات الموظفين', list) },
+      { key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() },
+    ])
+    const view = UI.el(`<div class="perm-apex">
+      <fieldset class="who"><legend>بيانات الموظف</legend><label>الموظف</label>
+        <input type="text" id="pm-code" dir="ltr" value="0"><select id="pm-emp"><option value="">إختر</option>${empOptions().map(([v, l]) => `<option value="${v}">${UI.esc(l)}</option>`).join('')}</select></fieldset>
+      <fieldset class="when"><legend>بيانات الإذن</legend><label>تاريخ الإذن</label><input type="date" id="pm-date" value="${Engine.today()}"></fieldset>
+      <div class="band">نــــوع الإذن</div>
+      <div class="cols">
+        <div class="kind">
+          <label><input type="radio" name="pm-kind" value="day"> يوم كامل</label>
+          <label><input type="radio" name="pm-kind" value="late" checked> إذن حضور متأخر</label>
+          <label><input type="radio" name="pm-kind" value="early"> إذن أنصراف مبكر</label>
+          <div class="times" id="pm-at-row"><label id="pm-at-label">توقيت الدخول</label><input type="text" id="pm-at" data-time dir="ltr" maxlength="5"></div>
+          <div class="notes"><label>ملاحظات</label><textarea id="pm-notes" rows="3"></textarea></div>
+        </div>
+        <fieldset class="day"><legend>مواعيد العمل لليوم</legend><div class="grid-wrap"><table class="grid"><thead><tr><th style="width:16px"></th><th>الفترة</th><th>من</th><th>إلى</th></tr></thead><tbody></tbody></table></div></fieldset>
+      </div>
+      <div class="grid-wrap list"><table class="grid"><thead><tr><th style="width:16px"></th><th style="width:110px">رقم الموظف</th><th class="sorted">إسم الموظف</th>
+        <th style="width:110px">تاريخ الإذن</th><th style="width:100px">بداية الإذن</th><th style="width:100px">نهاية الإذن</th><th style="width:80px">يوم كامل</th></tr></thead><tbody></tbody></table></div>
+    </div>`)
+    body.append(bar, view)
+    const $ = (sel) => view.querySelector(sel)
+    const list = view.querySelector('.grid-wrap.list'), tbody = list.querySelector('tbody')
+    const dayBody = view.querySelector('.day tbody')
+    const emp = () => DB.one('SELECT * FROM employees WHERE id = ?', [+$('#pm-emp').value])
+    // that day's work periods for the chosen employee: [[from, to] minutes]
+    const dayWindows = () => {
+      const e = emp(), date = $('#pm-date').value
+      if (!e || !date) return []
+      const hist = DB.all('SELECT group_id, from_date FROM employee_shifts WHERE employee_id = ? ORDER BY from_date', [e.id])
+      let gid = hist.length ? null : e.shift_group_id
+      for (const h of hist) if (h.from_date <= date) gid = h.group_id
+      const sc = Engine.schedule(Engine.loadConfig(), gid, date)
+      return sc.kind === 'windows' ? sc.windows.map((w) => [w.check_in, w.check_out]) : sc.kind === 'open' ? [[Engine.toMin(sc.open.check_in), Engine.toMin(sc.open.check_out)]] : []
+    }
+    const hm = (m) => Engine.hm(((m % 1440) + 1440) % 1440)
+    function showDay() {
+      const ws = dayWindows()
+      dayBody.innerHTML = ws.length ? ws.map(([a, b], i) => `<tr><td class="sel"></td><td class="center">${i + 1}</td><td class="center">${hm(a)}</td><td class="center">${hm(b)}</td></tr>`).join('')
+        : '<tr><td colspan="4" class="center">لا توجد مواعيد عمل في هذا اليوم</td></tr>'
+      return ws
+    }
+    // Apex: «إذن حضور متأخر» asks «توقيت الدخول» (the permission runs from the start of the day's
+    // work to it), «إذن انصراف مبكر» asks «توقيت خروج» (from it to the end), «يوم كامل» nothing
+    const kindOf = () => view.querySelector('[name=pm-kind]:checked').value
+    function applyKind() {
+      showDay()
+      const kind = kindOf()
+      $('#pm-at-row').hidden = kind === 'day'
+      $('#pm-at-label').textContent = kind === 'early' ? 'توقيت خروج' : 'توقيت الدخول'
+    }
+    view.querySelectorAll('[name=pm-kind]').forEach((r) => r.addEventListener('change', applyKind))
+    $('#pm-emp').addEventListener('change', () => { $('#pm-code').value = emp()?.code || '0'; showDay() })
+    $('#pm-code').addEventListener('change', () => {
+      const e = DB.one('SELECT id FROM employees WHERE code = ?', [$('#pm-code').value.trim()])
+      $('#pm-emp').value = e ? e.id : ''
+      showDay()
+    })
+    $('#pm-date').addEventListener('change', showDay)
+
+    function select(r) {
+      current = r
+      tbody.querySelectorAll('tr').forEach((x) => x.classList.toggle('current', !!r && x.dataset.id === String(r.id)))
+      $('#pm-emp').value = r?.employee_id ?? ''
+      $('#pm-code').value = r ? emp()?.code || '' : '0'
+      $('#pm-date').value = r?.date || Engine.today()
+      $('#pm-notes').value = r?.notes || ''
+      const ws = showDay()
+      const kind = r && ws.length && r.from_time === hm(ws[0][0]) && r.to_time === hm(ws.at(-1)[1]) ? 'day' : r && ws.length && r.to_time === hm(ws.at(-1)[1]) ? 'early' : 'late'
+      view.querySelector(`[name=pm-kind][value=${kind}]`).checked = true
+      $('#pm-at').value = !r ? '' : kind === 'early' ? r.from_time : kind === 'late' ? r.to_time : ''
+      applyKind()
+    }
+    function load() {
+      const like = `%${q}%`
+      const rows = DB.all(`SELECT p.*, e.code, e.name_ar FROM permissions p JOIN employees e ON e.id = p.employee_id
+        WHERE (? = '' OR e.code LIKE ? OR e.name_ar LIKE ?) ORDER BY p.date DESC, CAST(e.code AS INTEGER)`, [q, like, like])
+      const cfg = Engine.loadConfig()
+      tbody.innerHTML = ''
+      for (const r of rows) {
+        const e = DB.one('SELECT * FROM employees WHERE id = ?', [r.employee_id])
+        const sc = Engine.schedule(cfg, e.shift_group_id, r.date)
+        const full = sc.kind === 'windows' && r.from_time === hm(sc.windows[0].check_in) && r.to_time === hm(sc.windows.at(-1).check_out)
+        const tr = UI.el(`<tr data-id="${r.id}"><td class="sel"></td><td class="center">${UI.esc(r.code)}</td><td>${UI.esc(r.name_ar)}</td><td class="center">${r.date}</td>
+          <td class="center">${UI.esc(r.from_time)}</td><td class="center">${UI.esc(r.to_time)}</td><td class="center"><input type="checkbox" disabled ${full ? 'checked' : ''}></td></tr>`)
+        tr.addEventListener('mousedown', () => select(r))
+        tbody.appendChild(tr)
+      }
+      select(rows.find((r) => r.id === current?.id) || null)
+    }
+    async function save() {
+      if (WebSync.blocks('permissions')) return
+      const v = { employee_id: +$('#pm-emp').value || null, date: $('#pm-date').value, type_id: current?.type_id ?? null, notes: $('#pm-notes').value.trim() }
+      if (!v.employee_id) return UI.message('الموظف مطلوب')
+      if (!v.date) return UI.message('تاريخ الإذن مطلوب')
+      const ws = dayWindows(), kind = kindOf(), at = $('#pm-at').value.trim()
+      if (!ws.length) return UI.message('لا توجد مواعيد عمل للموظف في هذا اليوم')
+      const start = hm(ws[0][0]), end = hm(ws.at(-1)[1])
+      if (kind !== 'day' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(at)) return UI.message(`${kind === 'early' ? 'توقيت خروج' : 'توقيت الدخول'}: الوقت يجب أن يكون بصيغة HH:MM`)
+      // the time must fall inside the day's work (a time before its start is on the next day)
+      let atMin = Engine.toMin(at)
+      if (atMin != null && atMin < ws[0][0]) atMin += 1440
+      if (kind !== 'day' && !(atMin > ws[0][0] && atMin < ws.at(-1)[1])) return UI.message(`الوقت يجب أن يكون بين بداية الدوام ${start} ونهايته ${end}`)
+      v.from_time = kind === 'early' ? at : start
+      v.to_time = kind === 'late' ? at : end
+      if (current) DB.run('UPDATE permissions SET employee_id = ?, date = ?, from_time = ?, to_time = ?, type_id = ?, notes = ? WHERE id = ?', [v.employee_id, v.date, v.from_time, v.to_time, v.type_id, v.notes, current.id])
+      else {
+        DB.run('INSERT INTO permissions (employee_id, date, from_time, to_time, type_id, notes) VALUES (?, ?, ?, ?, ?, ?)', [v.employee_id, v.date, v.from_time, v.to_time, v.type_id, v.notes])
+        current = { id: DB.one('SELECT last_insert_rowid() AS id').id }
+      }
+      DB.audit('حفظ', 'أذونات الموظفين', `${emp()?.code} ${v.date} ${v.from_time}–${v.to_time}`)
+      await DB.flush()
+      load()
+      UI.message('تم الحفظ')
+    }
+    async function remove() {
+      if (WebSync.blocks('permissions')) return
+      if (!current) return UI.message('اختر إذناً من القائمة')
+      if (!(await yesNo('تأكيد الحذف', 'حذف هذا الإذن؟'))) return
+      DB.run('DELETE FROM permissions WHERE id = ?', [current.id])
+      DB.audit('حذف', 'أذونات الموظفين', String(current.id))
+      await DB.flush()
+      current = null
+      load()
+    }
+    async function search() {
+      const s = await UI.dialog({ head: 'بحث', width: 360,
+        bodyHtml: `<div class="fields" style="grid-template-columns:110px 1fr"><label>الكود أو الاسم</label><input type="text" id="ps-q" value="${UI.esc(q)}"></div>`,
+        buttons: [{ label: 'موافق', icon: 'ok', onClick: (d) => d.close(d.root.querySelector('#ps-q').value.trim()) }, { label: 'الغاء', icon: 'cancel', onClick: (d) => d.close(null) }] })
+      if (s === null) return
+      q = s
+      load()
+    }
+    load()
   })
 }
 
@@ -475,7 +637,10 @@ function openPermissions() {
 function openPostWindow(unpost) {
   const title = unpost ? 'الغاء ترحيل الحركات خلال فترة' : 'ترحيل الحركات وحساب ساعات العمل'
   UI.openWindow(unpost ? 'unpost' : 'post', title, { width: 780, height: unpost ? 360 : 400 }, (body, win) => {
-    const bar = UI.toolbar([{ key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() }])
+    const bar = UI.toolbar([
+      ...(unpost ? [{ key: 'help', label: 'مساعده', icon: 'help', onClick: () => UI.message('حدد الفترة (وأرقام الموظفين إن أردت) ثم «الغاء الترحيل»؛ الأيام الملغى ترحيلها يعاد حسابها بالمواعيد الحالية.') }] : []),
+      { key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() },
+    ])
     const view = UI.el(`<div class="post-win">
       <fieldset><legend>${unpost ? 'إلغاء ترحيل الحركات' : 'ترحيـل البيـانـات'}</legend>
         <div class="codes"><label><input type="checkbox" id="pw-codes"> أرقـام الموظفيــن</label>
@@ -530,77 +695,37 @@ function openPostWindow(unpost) {
     }
   })
 }
-// «نقل بصمات الموظفين»: copy employees + their fingerprints from one device to another,
-// so they need not be enrolled again on a new device. Device user id = employee code.
-function openTransferFingers() {
-  UI.openWindow('transfer-fingers', 'نقل بصمات الموظفين من جهاز الى جهاز', { width: 760, height: 290 }, (body, win) => {
-    const devices = DB.all('SELECT * FROM devices ORDER BY id')
-    const opts = devices.map((d) => `<option value="${d.id}">${UI.esc(d.name)} — ${UI.esc(d.ip || '')}</option>`).join('')
+const postPunches = () => openPostWindow(false)
+const openUnpost = () => openPostWindow(true)
+
+// Apex «الغاء جميع بيانات الموظف»: أرقام الموظفين مـن/إلـى · كلمة مرور مدير النظام · «الغاء البيانات»
+function purgeEmployee() {
+  UI.openWindow('purge-employee', 'الغاء جميع بيانات الموظف', { width: 630, height: 300 }, (body, win) => {
     const bar = UI.toolbar([{ key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() }])
-    const view = UI.el(`<div class="post-win">
-      <fieldset><legend>نقـل البصمـات</legend>
-        <div class="act"><label>من جهاز</label><select id="tf-from">${opts}</select><label>الى جهاز</label><select id="tf-to">${opts}</select></div>
-        <div class="codes"><label><input type="checkbox" id="tf-codes"> أرقـام الموظفيــن</label>
-          <span class="rng" hidden><label>مـن</label><input type="text" id="tf-cf" dir="ltr"><label>إلـى</label><input type="text" id="tf-ct" dir="ltr"></span></div>
-        <div class="act"><span id="tf-msg"></span><button id="pw-go">${ICONS.save || ''}<span>نقـل البصمـات</span></button></div>
-      </fieldset>
-      <div class="progress"><div id="pw-bar"></div></div>
-    </div>`)
+    const view = UI.el(`<div class="purge-win"><fieldset><legend>الغاء جميع بيانات الموظف</legend>
+      <div class="row"><label>أرقـــام الموظفيـــن</label><span>مـــن</span><input type="text" id="pe-from" dir="ltr"><span>إلــى</span><input type="text" id="pe-to" dir="ltr" placeholder="نفس الرقم"></div>
+      <div class="row"><label>كلمة مرور مدير النظام</label><input type="password" id="pe-pw"></div>
+      <button type="button" id="pe-go">${ICONS.del}<span>الغاء البيانات</span></button></fieldset></div>`)
     body.append(bar, view)
-    const $ = (s) => view.querySelector(s)
-    if (devices.length > 1) $('#tf-to').value = String(devices[1].id)
-    $('#tf-codes').addEventListener('change', (e) => { $('.rng').hidden = !e.target.checked })
-    $('#pw-go').onclick = async () => {
-      if (devices.length < 2) return UI.message('عرّف جهازين على الأقل من «البيانات الأساسية ← تعريف الأجهزة»')
-      const from = devices.find((d) => d.id === +$('#tf-from').value), to = devices.find((d) => d.id === +$('#tf-to').value)
-      if (from.id === to.id) return UI.message('اختر جهازين مختلفين')
-      let sel = null
-      if ($('#tf-codes').checked) {
-        const f = $('#tf-cf').value.trim(), t = $('#tf-ct').value.trim() || f
-        if (!/^\d+$/.test(f) || !/^\d+$/.test(t) || +t < +f) return UI.message('أدخل أرقام الموظفين (من رقم إلى رقم)')
-        sel = { from: +f, to: +t }
-      }
-      const dev = (d) => ({ ip: d.ip, port: +d.port || 4370, comm_key: d.comm_key || 0 })
-      const barEl = $('#pw-bar'); barEl.style.width = '5%'
-      $('#pw-go').disabled = true; $('#tf-msg').textContent = 'جاري الاتصال بالجهازين…'
-      try {
-        const r = await window.bridge.transferDevice({ from: dev(from), to: dev(to), sel }, ({ done, total }) => {
-          barEl.style.width = `${Math.max(5, (done / total) * 100)}%`; $('#tf-msg').textContent = `${done} / ${total}`
-        })
-        if (!r.ok) { barEl.style.width = '0'; $('#tf-msg').textContent = ''; return UI.message(r.error || 'تعذّر نقل البصمات') }
-        barEl.style.width = '100%'
-        const text = r.users ? `تم نقل ${r.users} موظف و ${r.fingers} بصمة` : 'لا يوجد موظفين بهذه الأرقام على الجهاز المصدر'
-        $('#tf-msg').textContent = text
-        DB.audit('نقل البصمات', `${from.name} → ${to.name}${sel ? ` · أرقام ${sel.from}–${sel.to}` : ''}`, text)
-        await DB.flush()
-        UI.message(text)
-      } finally { $('#pw-go').disabled = false }
+    view.querySelector('#pe-go').onclick = async () => {
+      if (WebSync.blocks('employees')) return
+      const f = view.querySelector('#pe-from').value.trim(), t = view.querySelector('#pe-to').value.trim() || f
+      if (!/^\d+$/.test(f) || !/^\d+$/.test(t) || +t < +f) return UI.message('أدخل رقم الموظف (أو من رقم إلى رقم)')
+      // «مدير النظام»: any user whose role is the built-in administrator role
+      const admins = DB.all('SELECT u.password FROM users u JOIN roles r ON r.id = u.role_id WHERE r.builtin = 1')
+      const pw = view.querySelector('#pe-pw').value
+      let ok = false
+      for (const a of admins) if (await checkPassword(a.password, pw)) { ok = true; break }
+      if (!ok) return UI.message('كلمة مرور مدير النظام غير صحيحة')
+      if (await purgeRange(+f, +t)) view.querySelector('#pe-pw').value = ''
     }
   })
 }
 
-const postPunches = () => openPostWindow(false)
-const openUnpost = () => openPostWindow(true)
-
-async function purgeEmployee() {
-  if (WebSync.blocks('employees')) return
-  const range = await UI.dialog({
-    head: 'الغاء جميع بيانات الموظف بالنظام', width: 460,
-    bodyHtml: `<div class="fields" style="grid-template-columns:110px 1fr"><label>من رقم موظف</label><input type="text" id="pe-from" dir="ltr">
-      <label>إلى رقم موظف</label><input type="text" id="pe-to" dir="ltr" placeholder="نفس الرقم لموظف واحد"></div>`,
-    buttons: [
-      { label: 'الغاء البيانات', icon: 'del', onClick: (d) => {
-        const f = d.root.querySelector('#pe-from').value.trim(), t = d.root.querySelector('#pe-to').value.trim() || f
-        if (!/^\d+$/.test(f) || !/^\d+$/.test(t) || +t < +f) return d.error('أدخل رقم الموظف (أو من رقم إلى رقم)')
-        d.close({ f: +f, t: +t })
-      } },
-      { label: 'الغاء', icon: 'cancel', onClick: (d) => d.close(null) },
-    ],
-  })
-  if (!range) return
+async function purgeRange(from, to) {
+  const range = { f: from, t: to }
   const emps = DB.all('SELECT * FROM employees WHERE CAST(code AS INTEGER) BETWEEN ? AND ? ORDER BY CAST(code AS INTEGER)', [range.f, range.t])
   if (!emps.length) return UI.message('لا يوجد موظفين بهذه الأرقام')
-  if (!(await askPassword('الغاء بيانات موظف'))) return
   if (!(await yesNo('تأكيد نهائي', `سيتم حذف ${emps.length} موظف (${emps.slice(0, 5).map((e) => UI.esc(e.name_ar)).join('، ')}${emps.length > 5 ? '…' : ''}) وكل حركاتهم وإجازاتهم وأذوناتهم نهائياً. هل انت متأكد؟`))) return
   DB.run('BEGIN')
   for (const e of emps) {
@@ -616,4 +741,5 @@ async function purgeEmployee() {
   DB.audit('الغاء جميع بيانات الموظف', emps.map((e) => `${e.code} — ${e.name_ar}`).join('، '))
   await DB.flush()
   UI.message(`تم حذف جميع بيانات ${emps.length} موظف`)
+  return true
 }

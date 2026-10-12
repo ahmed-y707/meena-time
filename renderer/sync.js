@@ -260,7 +260,7 @@ const WebSync = {
       const byCal = { Y: s.windows.filter((w) => w.calendar_type !== 'Ramadan'), R: s.windows.filter((w) => w.calendar_type === 'Ramadan') }
       if (open) {
         const req = s.windows[0]?.required_minutes || Math.round((s.custom_open_hours || 8) * 60)
-        for (const cal of ['Y', 'R']) {
+        for (const cal of ['Y']) { // Apex has no Ramadan timetable: the site's Ramadan times are not imported
           if (cal === 'R' && !byCal.R.length) continue
           for (let day = 0; day < 7; day++) {
             const w = byCal[cal].length ? byCal[cal].find((x) => this.DAY[x.day] === day) : (day === off ? null : { required_minutes: req, extends_next_day: 1, day_end_time: s.custom_day_end_time })
@@ -279,7 +279,7 @@ const WebSync = {
           for (let day = 0; day < 7; day++) byCal.Y.push({ day: Object.keys(this.DAY)[day], window_no: 1, start_in: t(a - pre), check_in: hm(s.start_time), late_allowance_min: s.late_entry_grace_period || 0,
             end_in: t(mid), start_out: t(mid + 1), early_out_min: s.early_exit_grace_period || 0, check_out: hm(s.end_time), end_out: t(b + post) })
         }
-        for (const cal of ['Y', 'R']) {
+        for (const cal of ['Y']) { // Apex has no Ramadan timetable: the site's Ramadan times are not imported
           if (cal === 'R' && !byCal.R.length) continue
           for (let day = 0; day < 7; day++) {
             const ws = byCal[cal].filter((w) => this.DAY[w.day] === day).sort((a, b) => a.window_no - b.window_no)
@@ -388,6 +388,18 @@ const WebSync = {
 }
 
 // «الإعدادات ← الربط بالموقع»
+// «الربط بالموقع» is locked: it opens only with the vendor's password (only its SHA-256 is kept here)
+const WEBLINK_LOCK = '6d475a8c02001680e46314ba06830ecdf3796955511db4b36ae45d5b992b495b'
+async function openWebLinkLocked() {
+  const pw = await UI.dialog({ head: 'الربط بالموقع', width: 380,
+    bodyHtml: '<div class="fields" style="grid-template-columns:110px 1fr"><label>كلمة المرور</label><input type="password" id="wl-lock" dir="ltr"></div><div style="font-size:12px">هذه الشاشة مقفلة — تواصل مع بائع البرنامج للحصول على كلمة المرور</div>',
+    buttons: [{ label: 'موافق', icon: 'ok', onClick: async (d) => {
+      const v = d.root.querySelector('#wl-lock').value
+      const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v)))].map((b) => b.toString(16).padStart(2, '0')).join('')
+      h === WEBLINK_LOCK ? d.close(true) : d.error('كلمة المرور غير صحيحة')
+    } }, { label: 'الغاء', icon: 'cancel', onClick: (d) => d.close(false) }] })
+  if (pw) return openWebLink()
+}
 async function openWebLink() {
   if (!Session.admin) return UI.message('الربط بالموقع لمدير النظام فقط')
   const cfg = await window.bridge.webConfig()
@@ -399,7 +411,7 @@ async function openWebLink() {
   }
   const test = async (c) => window.bridge.webCall('GET', '/api/method/frappe.auth.get_logged_user', null, c)
   await UI.dialog({
-    head: 'الربط بالموقع', width: 520,
+    head: 'الربط بالموقع', width: 640, cls: 'weblink',
     bodyHtml: `<div style="flex:1;display:flex;flex-direction:column;gap:8px">
       <div style="font-size:12px">عند الربط يصبح الموقع هو مصدر البيانات: الموظفين والإدارات والدوامات والعطلات والإجازات تأتي منه، وحركات البصمة المقروءة هنا تُرفع إليه. تتم المزامنة تلقائياً كل 10 دقائق. عند الربط تُسحب حركات آخر 120 يوماً فقط؛ «سحب كل الحركات» يسحب كل الحركات القديمة الموجودة على الموقع.</div>
       <div class="fields" style="grid-template-columns:120px 1fr">

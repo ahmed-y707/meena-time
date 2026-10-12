@@ -19,7 +19,7 @@ const COMPANY_FIELDS = [
   ['company_address', 'العنوان عربى', 'rtl'], ['company_address_en', 'العنوان أجنبى', 'ltr'],
 ]
 function openCompany() {
-  UI.openWindow('company', 'بيانات الشركة', { width: 860, height: 520 }, (body, win) => {
+  UI.openWindow('company', 'بيانات الشركة', { width: 880, height: 520 }, (body, win) => {
     let logo = meta('company_logo')
     const bar = UI.toolbar([
       { key: 'save', label: 'موافق', icon: 'save', onClick: save },
@@ -29,13 +29,13 @@ function openCompany() {
     const form = UI.el(`<div class="company">
       <div class="side">بيانات الشركة</div>
       <div class="main">
-        ${COMPANY_FIELDS.map(([k, l, d]) => `<label>${l}</label>${inp(k, d)}`).join('')}
+        ${COMPANY_FIELDS.map(([k, l, d]) => `<label>${l}</label><div class="wide">${inp(k, d)}</div>`).join('')}
         <label>الموقع الالكترونى</label>${inp('company_website')}
         <label>ايميل الشركة</label>${inp('company_email')}
         <label>التليفون</label>${inp('company_phone')}
         <div class="aside">
           <label>الفاكس</label>${inp('company_fax')}
-          <label>الشعار</label><label class="upload"><input type="file" id="co-logo" accept="image/*" hidden><span>Upload</span></label>
+          <label>الشعار</label><label class="upload"><input type="file" id="co-logo" accept="image/*" hidden><span>Upload</span>${ICONS.i_upload}</label>
           <div class="logo" id="co-logo-img">${logo ? `<img src="${logo}" alt="">` : ''}</div>
         </div>
       </div></div>`)
@@ -65,75 +65,28 @@ function openCompany() {
 // «إعدادات النظام» — Apex Time's system settings screen: attendance rules (engine.js
 // SETTINGS_DEFAULT), the «بيان تأخير الموظفين» report colours, and the daily automatic
 // read-and-post schedule. Saved as one JSON row (meta sys_settings).
-const SHIFT_COUNT_NAMES = [[1, 'وردية'], [2, 'ورديتان'], [3, 'ثلاث ورديات'], [4, 'أربع ورديات']]
-const COLOR_FIELDS = [['holiday', 'عطله رسمية'], ['permission', 'أذن'], ['weekly', 'عطلة أسبوعية'], ['early', 'خروج مبكر'],
-  ['leave', 'أجازة'], ['late', 'تأخير'], ['absent', 'غياب'], ['present', 'مداوم']]
+const SHIFT_COUNT_NAMES = [[1, 'وردية'], [2, 'ورديتان'], [3, 'ثلاث ورديات'], [4, 'أربعة ورديات']]
 
+// Apex «إعدادات النظام»: one «إعدادات عامه» box — وقت إهمال الحركات بالدقائق and عدد الورديات التي تظهر في
+// التقارير. Settings Apex doesn't show here keep their saved values.
 function openSystemSettings() {
-  UI.openWindow('sys-settings', 'إعدادات النظام', { width: 1000, height: 470 }, (body, win) => {
+  UI.openWindow('sys-settings', 'إعدادات النظام', { width: 560, height: 300 }, (body, win) => {
     const S = Engine.settings()
-    const devices = DB.all('SELECT id, name FROM devices ORDER BY name')
-    let times = [...(S.auto_times || [])].sort()
     const bar = UI.toolbar([
       { key: 'save', label: 'حفظ', icon: 'save', onClick: save },
       { key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() },
     ])
-    const num = (id, v, on = true) => `<input type="text" inputmode="numeric" dir="ltr" class="num" id="${id}" value="${+v || 0}" ${on ? '' : 'disabled'}>`
-    const form = UI.el(`<div class="sys-set">
-      <fieldset class="rules">
-        <div class="row"><label>وقت إهمال الحركات بالدقائق</label>${num('s-ignore', S.ignore_min)}</div>
+    const form = UI.el(`<div class="sys-set apex"><fieldset class="rules"><legend>إعدادات عامه</legend>
+        <div class="row"><label>وقت إهمال الحركات بالدقائق</label><input type="text" data-num maxlength="3" dir="ltr" class="num" id="s-ignore" value="${+S.ignore_min || 0}"></div>
         <div class="row"><label>عدد الورديات التي تظهر في التقارير</label><select id="s-shifts">${SHIFT_COUNT_NAMES.map(([v, l]) => `<option value="${v}" ${+S.report_shifts === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-        <div class="row"><label>يحتسب الاضافي قبل الدوام</label>${num('s-otb', S.ot_before_min)}<span>بالدقائق</span></div>
-        <div class="row"><label>يحتسب الاضافي بعد الدوام</label>${num('s-ota', S.ot_after_min)}<span>بالدقائق</span></div>
-        <div class="row"><label><input type="checkbox" id="s-al" ${S.absent_late_on ? 'checked' : ''}> يتم احتساب اليوم غياب بعد تأخير</label>${num('s-alm', S.absent_late_min, S.absent_late_on)}<span>بالدقائق</span></div>
-        <div class="row"><label><input type="checkbox" id="s-ae" ${S.absent_early_on ? 'checked' : ''}> يتم احتساب اليوم غياب بعد انصراف مبكر</label>${num('s-aem', S.absent_early_min, S.absent_early_on)}<span>بالدقائق</span></div>
-        <div class="row"><label><input type="checkbox" id="s-fl" ${S.first_last ? 'checked' : ''}> احتساب اول حركة دخول واخر حركة انصراف</label></div>
-      </fieldset>
-      <fieldset class="auto">
-        <div class="row"><label><input type="checkbox" id="s-auto" ${S.auto_read ? 'checked' : ''}> قراءة الحركات اليوميه والترحيل الالي</label></div>
-        <div class="row"><label>قراءة بيانات الأجهزة</label><select id="s-dev"><option value="">الكل</option>${devices.map((d) => `<option value="${d.id}" ${String(S.auto_device) === String(d.id) ? 'selected' : ''}>${UI.esc(d.name)}</option>`).join('')}</select></div>
-        <div class="row top"><label>مواعيد القراءة</label><div class="times">
-          <div class="add"><input type="text" id="s-time" value="00:00:00" dir="ltr" maxlength="8" placeholder="00:00:00"><button type="button" id="s-tadd" title="اضافة موعد">${ICONS.new || '+'}</button><button type="button" id="s-tdel" title="حذف الموعد المحدد">${ICONS.del || '×'}</button></div>
-          <select id="s-tlist" size="5" dir="ltr"></select></div></div>
-        <div class="note">يعمل أثناء فتح البرنامج: تُقرأ الأجهزة في كل موعد، ويُرحَّل كل يوم منتهٍ لم يُرحَّل بعد.</div>
-      </fieldset>
-      <fieldset class="colors"><legend>تقرير بيان تأخير الموظفين</legend>
-        ${COLOR_FIELDS.map(([k, l]) => `<label class="clr"><input type="color" id="c-${k}" value="${S.colors[k]}"> ${l}</label>`).join('')}
-      </fieldset>
-    </div>`)
+      </fieldset></div>`)
     body.append(bar, form)
     const $ = (id) => form.querySelector(id)
-    const toggle = (chk, inp) => $(chk).addEventListener('change', () => { $(inp).disabled = !$(chk).checked })
-    toggle('#s-al', '#s-alm'); toggle('#s-ae', '#s-aem')
-    const drawTimes = () => { $('#s-tlist').innerHTML = times.map((t) => `<option>${t}</option>`).join('') }
-    drawTimes()
-    $('#s-tadd').onclick = () => {
-      const m = ($('#s-time').value || '').trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/)
-      if (!m || +m[1] > 23 || +m[2] > 59 || +(m[3] || 0) > 59) return UI.message('اكتب الموعد بصيغة 24 ساعة: ساعة:دقيقة:ثانية (مثال 22:40:00)')
-      const t = `${m[1].padStart(2, '0')}:${m[2]}:${m[3] || '00'}`
-      if (!times.includes(t)) times = [...times, t].sort()
-      drawTimes()
-    }
-    $('#s-tdel').onclick = () => { const t = $('#s-tlist').value; if (t) { times = times.filter((x) => x !== t); drawTimes() } }
-
     async function save() {
-      const n = (id, max = 1440) => {
-        const v = $(id).value.trim()
-        if (!/^\d{1,4}$/.test(v) || +v > max) throw new Error('القيم بالدقائق: أرقام صحيحة من 0 إلى ' + max)
-        return +v
-      }
-      let next
-      try {
-        next = {
-          ignore_min: n('#s-ignore', 120), report_shifts: +$('#s-shifts').value, ot_before_min: n('#s-otb'), ot_after_min: n('#s-ota'),
-          absent_late_on: $('#s-al').checked ? 1 : 0, absent_late_min: n('#s-alm'), absent_early_on: $('#s-ae').checked ? 1 : 0, absent_early_min: n('#s-aem'),
-          first_last: $('#s-fl').checked ? 1 : 0,
-          colors: Object.fromEntries(COLOR_FIELDS.map(([k]) => [k, $(`#c-${k}`).value])),
-          auto_read: $('#s-auto').checked ? 1 : 0, auto_device: $('#s-dev').value, auto_times: times,
-        }
-      } catch (e) { return UI.message(e.message) }
-      if (next.auto_read && !next.auto_times.length) return UI.message('حدد موعداً واحداً على الأقل لقراءة الحركات')
-      setMeta('sys_settings', JSON.stringify(next))
+      const v = $('#s-ignore').value.trim()
+      if (!/^\d{1,3}$/.test(v) || +v > 120) return UI.message('وقت إهمال الحركات: رقم من 0 إلى 120 دقيقة')
+      const saved = JSON.parse(meta('sys_settings') || '{}')
+      setMeta('sys_settings', JSON.stringify({ ...saved, ignore_min: +v, report_shifts: +$('#s-shifts').value }))
       DB.audit('إعدادات النظام', 'حفظ')
       await DB.flush()
       AutoRead.restart()
@@ -146,7 +99,7 @@ function openSystemSettings() {
 // the device(s), then post every finished day since the last posted period (never today).
 const AutoRead = {
   timer: null, done: new Set(),
-  read: (d) => window.bridge.readDevice({ ip: d.ip, port: +d.port || 4370 }),
+  read: (d) => { const no = deviceNotReadable(d); return no ? Promise.resolve({ ok: false, error: no }) : window.bridge.readDevice({ ip: d.ip, port: +d.port || 4370 }) },
   restart() {
     clearInterval(this.timer)
     this.timer = null
@@ -187,30 +140,23 @@ const AutoRead = {
   },
 }
 
+// Apex «إنشاء نسخة إحتياطية من قاعدة البيانات»
+function openBackup() {
+  UI.openWindow('backup', 'إنشاء نسخة إحتياطية من قاعدة البيانات', { width: 746, height: 300 }, (body, win) => {
+    const bar = UI.toolbar([{ key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() }])
+    const view = UI.el(`<div class="create-db backup-db"><div class="side">إنشاء نسخة إحتياطية من قاعدة البيانات</div><div class="col">
+      <div class="warn">هذه العملية ستؤدي إلى إنشاء نسخة إحتياطية من قاعدة البيانات</div>
+      <fieldset><legend>بيانات قاعدة البيانات</legend>
+        <div class="fields"><label>قاعدة البيانات الحالية</label><input type="text" readonly value="${UI.esc(dbLabel(DB.year))}"></div>
+        <button id="bk-go">${ICONS.save}<span>تنفيذ</span></button></fieldset></div></div>`)
+    body.append(bar, view)
+    view.querySelector('#bk-go').onclick = backupNow
+  })
+}
+
 async function backupNow() {
   const res = await window.bridge.backup('main', DB.db.export())
   UI.message(res?.ok ? `تم حفظ النسخة الاحتياطية:\n${res.path}` : res?.error || 'تم إلغاء النسخ الاحتياطي')
-}
-
-function openPenaltyRules() {
-  openGridWindow({
-    id: 'penalty-rules', title: 'لائحة الجزاءات', table: 'penalty_rules', orderBy: 'violation, occurrence', width: 860,
-    help: 'لكل مخالفة حدد الجزاء حسب مرة تكرارها خلال الشهر. قاعدة «التكرار 4» تُطبَّق على المرة الرابعة وما بعدها. «أقل مدة» تتجاهل التأخير/الانصراف الأقصر منها.',
-    columns: [
-      { field: 'violation', label: 'المخالفة', type: 'select', width: 150, options: () => Object.entries(VIOLATIONS), required: true },
-      { field: 'min_minutes', label: 'أقل مدة (دقائق)', type: 'en', width: 110 },
-      { field: 'occurrence', label: 'التكرار', type: 'select', width: 110, options: () => [[1, 'المرة الأولى'], [2, 'الثانية'], [3, 'الثالثة'], [4, 'الرابعة فأكثر']], required: true },
-      { field: 'action', label: 'الجزاء', type: 'select', width: 120, options: () => Object.entries(ACTIONS), required: true },
-      { field: 'amount', label: 'القيمة', type: 'en', width: 80 },
-      { field: 'notes', label: 'ملاحظات' },
-    ],
-    validate: (r) => {
-      if (r.min_minutes !== '' && r.min_minutes != null && !/^\d{1,4}$/.test(String(r.min_minutes))) return 'أقل مدة: رقم صحيح بالدقائق'
-      if (r.action !== 'warning' && !(+r.amount > 0)) return 'القيمة مطلوبة للخصم (دقائق أو أيام)'
-      if (r.action === 'days' && +r.amount > 30) return 'خصم الأيام لا يتجاوز 30'
-      return null
-    },
-  })
 }
 
 // Screens a non-admin user may be granted (menu item labels)
@@ -219,18 +165,18 @@ function openPenaltyRules() {
 // like Apex (300 … per menu). English names as Apex shows them.
 const SCREEN_EN = {
   'قوائم البرنامج': 'Setup programs', 'الإدارات والأقسام': 'Branches and Departments', 'المشاريع': 'Projects', 'مواعيد العمل': 'Shifts',
-  'الموظفين': 'Employees', 'مجموعات الموظفين': 'Groups', 'تعريف الأجهزة': 'Machines', 'العطلات الرسمية': 'Holidays', 'مواعيد رمضان': 'Ramadan timings',
-  'قراءة الحركات (شبكة - ملف)': 'Read machines', 'الغاء الحركات المسحوبة خلال فترة': 'Cancel read transactions', 'عرض الحركات': 'Show transactions',
-  'إضافة وتعديل الحركات لموظف': 'Add transactions', 'الغاء الحركات المعدلة يدويا': 'Cancel manual transactions', 'إضافة إجازات لموظف': 'Employee vacations',
+  'الموظفون': 'Employees', 'مجموعات الموظفين': 'Groups', 'تعريف الأجهزة': 'Machines', 'العطلات الرسمية': 'Holidays', 
+  'قراءة الحركات (شبكة - ملف)': 'Read machines', 'عرض الحركات': 'Show transactions',
+  'إضافة وتعديل الحركات لموظف': 'Add transactions', 'الغاء الحركات المعدله يدويا': 'Cancel manual transactions', 'إضافة أجازات لموظف': 'Employee vacations',
   'إضافة أذونات لموظف': 'Employee permissions', 'ترحيل الحركات': 'Post transactions', 'الغاء ترحيل الحركات': 'Unpost transactions',
-  'الغاء جميع بيانات الموظف بالنظام': 'Delete employee data', 'بيانات المؤسسة': 'Company information', 'لائحة الجزاءات': 'Penalty rules',
+  'الغاء جميع بيانات الموظف بالنظام': 'Delete employee data', 'بيانات المؤسسه': 'Company information',
   'صلاحيات المستخدمين': 'User permissions', 'إدارة المستخدمين': 'Users', 'اعدادات النظام': 'System settings', 'الربط بالموقع': 'Web link',
   'نسخة احتياطية': 'Backup', 'استرجاع نسخة احتياطية': 'Restore backup', 'سجل الحركات': 'Audit log',
 }
-const HIDDEN_SCREENS = ['تسجيل المنتج', 'تسجيل خروج']
+const HIDDEN_SCREENS = ['تعديل بيانات الدخول']
 function screenList() {
   const out = []
-  MENUS.filter((m) => m.label !== 'مساعدة').forEach((m, mi) => {
+  MENUS.filter((m) => m.label !== 'ملف' && m.label !== 'مساعده').forEach((m, mi) => {
     let n = 0
     const add = (label) => { if (!HIDDEN_SCREENS.includes(label)) out.push({ key: `${m.label}/${label}`, code: (mi + 3) * 100 + n++, ar: label, en: SCREEN_EN[label] || '' }) }
     for (const it of m.items) {
