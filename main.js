@@ -24,8 +24,9 @@ function currentDb() {
 }
 const namedDbs = () => (fs.existsSync(dataDir()) ? fs.readdirSync(dataDir()).map((f) => f.match(/^meena-time-db-(.+)\.sqlite$/)?.[1]).filter(Boolean).sort() : [])
 const licencePath = () => path.join(dataDir(), 'licence.key')
-// trial build (tools/build-trial.sh bundles trial-build.json): never runs without a code from us
-const guard = createGuard({ dataDir, licencePath, requireKey: fs.existsSync(path.join(__dirname, 'trial-build.json')) })
+// trial build (tools/build-trial.sh bundles trial-build.json): the trial starts on first run, then a code from us is needed
+const TRIAL_BUILD = path.join(__dirname, 'trial-build.json')
+const guard = createGuard({ dataDir, licencePath, buildTrial: fs.existsSync(TRIAL_BUILD) ? (JSON.parse(fs.readFileSync(TRIAL_BUILD, 'utf8')).token || 'invalid') : null })
 app.whenReady().then(() => { guard.checkNetTime(); setInterval(() => guard.checkNetTime(), 30 * 60e3) })
 
 function createWindow() {

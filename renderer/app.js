@@ -119,7 +119,7 @@ function renderHome(page = null) {
     <div class="trial">${ICONS.key.replace('<svg', '<svg class="key"')}
       نسخة تجريبية كاملة المميزات<br>
       تنتهي الفترة التجريبية يوم ${UI.esc(licence.expires)} — متبقي ${licence.daysLeft} ${licence.daysLeft > 10 || licence.daysLeft < 3 ? 'يوم' : 'أيام'}<br>
-      للاشتراك تواصل مع موزّع البرنامج
+      للاشتراك تواصل معنا على واتساب <span dir="ltr">0535322228</span>
     </div>` : licence.ok ? '' : `
     <div class="trial">${ICONS.key.replace('<svg', '<svg class="key"')}
       هذه النسخة تجريبية<br>
@@ -185,13 +185,17 @@ async function lockScreen(st) {
     bodyHtml: `
       <div style="display:flex;flex-direction:column;gap:12px">
         <div style="font-weight:bold">${UI.esc(LOCK_TEXT[st.reason] || LOCK_TEXT.expired)}</div>
-        <div>أرسل «كود الطلب» لموزّع البرنامج ليرسل لك كود الترخيص، ثم ألصقه هنا. بياناتك محفوظة على الجهاز كما هي.</div>
+        <div>بياناتك محفوظة على الجهاز كما هي. للاشتراك تواصل معنا على واتساب <b dir="ltr">0535322228</b> واضغط «نسخ كود الطلب» وأرسله لنا، ثم ألصق الكود الذي نرسله لك هنا.</div>
         <div class="fields" style="grid-template-columns:120px 1fr">
           <label>كود الطلب</label><input type="text" id="req" readonly dir="ltr" value="${UI.esc(st.requestCode)}">
           <label>كود الترخيص</label><input type="text" id="lic" dir="ltr">
         </div>
       </div>`,
     buttons: [
+      { label: 'نسخ كود الطلب', icon: 'restore', onClick: (d) => {
+        const i = d.root.querySelector('#req'); i.select(); document.execCommand('copy')
+        d.error('تم نسخ كود الطلب — ألصقه في رسالة واتساب')
+      } },
       { label: 'تسجيل', icon: 'register', onClick: async (d) => {
         const code = d.root.querySelector('#lic').value.trim()
         if (!code) return d.error('أدخل كود الترخيص')
