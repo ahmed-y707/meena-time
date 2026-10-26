@@ -37,7 +37,7 @@ const Session = (window.Session = { userId: null, username: '', admin: false, pe
 function setCaption() {
   // Apex shows this line in the window's own title bar
   document.title = document.getElementById('caption-text').textContent =
-    `Meena Time Ver. ${VERSION} (${licence.ok ? licence.edition : 'Trial'}) ${licence.ok ? 'Registered' : 'Unregistered'}${DB.year !== 'main' ? ` — ${DB.year}` : ''}`
+    `Meena Time Ver. ${VERSION} (${licence.ok ? licence.edition : 'Trial'}) ${licence.ok ? (licence.trial ? `حتى ${licence.expires}` : 'Registered') : 'Unregistered'}${DB.year !== 'main' ? ` — ${DB.year}` : ''}`
 }
 
 function buildMenu() {
@@ -115,7 +115,12 @@ function renderHome(page = null) {
     UI.renderStrip()
     return
   }
-  const trial = licence.ok ? '' : `
+  const trial = licence.trial ? `
+    <div class="trial">${ICONS.key.replace('<svg', '<svg class="key"')}
+      نسخة تجريبية كاملة المميزات<br>
+      تنتهي الفترة التجريبية يوم ${UI.esc(licence.expires)} — متبقي ${licence.daysLeft} ${licence.daysLeft > 10 || licence.daysLeft < 3 ? 'يوم' : 'أيام'}<br>
+      للاشتراك تواصل مع موزّع البرنامج
+    </div>` : licence.ok ? '' : `
     <div class="trial">${ICONS.key.replace('<svg', '<svg class="key"')}
       هذه النسخة تجريبية<br>
       كل مميزات النسخة متاحة ما عدا التقارير إلا التقارير الآتية<br>
@@ -161,6 +166,42 @@ async function openRegister() {
         UI.message('تم تسجيل البرنامج بنجاح')
       } },
       { label: 'إغلاق', icon: 'cancel', onClick: (d) => d.close(false) },
+    ],
+  })
+}
+
+// trial over / clock turned back / trial build without a code: nothing opens until a valid code is entered
+const LOCK_TEXT = {
+  expired: 'انتهت الفترة التجريبية لهذا البرنامج',
+  clock: 'تم تغيير تاريخ أو وقت الجهاز إلى الخلف — أعد ضبط التاريخ والوقت الصحيحين ثم أعد فتح البرنامج',
+  nokey: 'هذه النسخة تحتاج كود ترخيص من موزّع البرنامج قبل التشغيل',
+}
+async function lockScreen(st) {
+  document.querySelectorAll('.dlg-backdrop:not(.lock)').forEach((b) => b.remove())
+  if (document.querySelector('.dlg-backdrop.lock')) return
+  await UI.dialog({
+    winbar: 'تسجيل المنتج', head: 'البرنامج مقفل', width: 898, btnsLeft: true, cls: 'lock-dlg',
+    onOpen: (d) => d.root.classList.add('lock'),
+    bodyHtml: `
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="font-weight:bold">${UI.esc(LOCK_TEXT[st.reason] || LOCK_TEXT.expired)}</div>
+        <div>أرسل «كود الطلب» لموزّع البرنامج ليرسل لك كود الترخيص، ثم ألصقه هنا. بياناتك محفوظة على الجهاز كما هي.</div>
+        <div class="fields" style="grid-template-columns:120px 1fr">
+          <label>كود الطلب</label><input type="text" id="req" readonly dir="ltr" value="${UI.esc(st.requestCode)}">
+          <label>كود الترخيص</label><input type="text" id="lic" dir="ltr">
+        </div>
+      </div>`,
+    buttons: [
+      { label: 'تسجيل', icon: 'register', onClick: async (d) => {
+        const code = d.root.querySelector('#lic').value.trim()
+        if (!code) return d.error('أدخل كود الترخيص')
+        const r = await window.bridge.register(code)
+        if (!r.ok && !r.locked) return d.error('كود الترخيص غير صحيح لهذا الجهاز')
+        if (r.locked) return d.error(LOCK_TEXT[r.reason] || LOCK_TEXT.expired)
+        licence = r
+        d.close(true)
+      } },
+      { label: 'إغلاق البرنامج', icon: 'cancel', onClick: () => window.bridge.quit ? window.bridge.quit() : window.close() },
     ],
   })
 }
@@ -365,6 +406,7 @@ function openRestore() {
   await DB.init()
   await DB.open()
   licence = await window.bridge.licenceStatus()
+  if (licence.locked) await lockScreen(licence)
   setCaption()
   await login()
   document.getElementById('statusbar').innerHTML = `المستخدم: <b>${UI.esc(Session.username)}</b>`
@@ -372,4 +414,11 @@ function openRestore() {
   renderHome()
   WebSync.init()
   AutoRead.restart()
+  // a trial that ends while the program is open locks it too
+  setInterval(async () => {
+    const st = await window.bridge.licenceStatus()
+    if (st.locked) { await lockScreen(st); licence = st.ok ? st : await window.bridge.licenceStatus() }
+    else if (st.ok !== licence.ok || st.daysLeft !== licence.daysLeft) licence = st
+    setCaption(); if (document.querySelector('#home:not(.sub)')) renderHome()
+  }, 10 * 60e3)
 })()

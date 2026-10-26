@@ -4,6 +4,7 @@ const { app, BrowserWindow, ipcMain, Menu, dialog, safeStorage, screen } = requi
 const path = require('path')
 const fs = require('fs')
 const { requestCode, verifyLicence } = require('./lib/license')
+const { createGuard } = require('./lib/guard')
 
 // Demo: own data folder, starts with the test data, all features unlocked.
 // Installer: demo/demo-data.sqlite is bundled by tools/build-demo.sh (normal
@@ -23,6 +24,9 @@ function currentDb() {
 }
 const namedDbs = () => (fs.existsSync(dataDir()) ? fs.readdirSync(dataDir()).map((f) => f.match(/^meena-time-db-(.+)\.sqlite$/)?.[1]).filter(Boolean).sort() : [])
 const licencePath = () => path.join(dataDir(), 'licence.key')
+// trial build (tools/build-trial.sh bundles trial-build.json): never runs without a code from us
+const guard = createGuard({ dataDir, licencePath, requireKey: fs.existsSync(path.join(__dirname, 'trial-build.json')) })
+app.whenReady().then(() => { guard.checkNetTime(); setInterval(() => guard.checkNetTime(), 30 * 60e3) })
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -95,16 +99,18 @@ ipcMain.handle('db:save', (_e, year, bytes) => {
 })
 ipcMain.handle('licence:status', () => {
   if (DEMO) return { requestCode: requestCode(), ok: true, edition: 'Demo' }
-  const code = fs.existsSync(licencePath()) ? fs.readFileSync(licencePath(), 'utf8') : ''
-  return { requestCode: requestCode(), ...verifyLicence(code) }
+  return guard.status()
 })
-ipcMain.handle('licence:register', (_e, code) => {
+ipcMain.handle('licence:register', async (_e, code) => {
   const res = verifyLicence(code)
-  if (res.ok) {
-    fs.mkdirSync(dataDir(), { recursive: true })
-    fs.writeFileSync(licencePath(), String(code).trim())
-  }
-  return res
+  if (!res.ok) return res
+  const prev = fs.existsSync(licencePath()) ? fs.readFileSync(licencePath(), 'utf8') : null
+  fs.mkdirSync(dataDir(), { recursive: true })
+  fs.writeFileSync(licencePath(), String(code).trim())
+  await guard.checkNetTime()
+  const st = guard.status()
+  if (st.locked && prev !== null) fs.writeFileSync(licencePath(), prev) // an already-ended trial code doesn't replace a working one
+  return st
 })
 
 // «قراءة الحركات» from a ZKTeco device on the LAN (TCP 4370, UDP fallback inside node-zklib).
@@ -162,6 +168,7 @@ ipcMain.handle('db:pick', async (e) => {
   return canceled || !filePaths[0] ? null : { path: filePaths[0], bytes: fs.readFileSync(filePaths[0]) }
 })
 ipcMain.handle('app:relaunch', () => { app.relaunch(); app.exit(0) })
+ipcMain.handle('app:quit', () => app.exit(0))
 ipcMain.handle('paths', () => ({ data: dataDir(), backups: path.join(dataDir(), 'backups') }))
 ipcMain.handle('db:backup', async (e, year, bytes) => {
   const win = BrowserWindow.fromWebContents(e.sender)

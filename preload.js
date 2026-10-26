@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('bridge', {
   retireDb: (year) => ipcRenderer.invoke('db:retire', year),
   pickDb: () => ipcRenderer.invoke('db:pick'),
   relaunch: () => ipcRenderer.invoke('app:relaunch'),
+  quit: () => ipcRenderer.invoke('app:quit'),
   licenceStatus: () => ipcRenderer.invoke('licence:status'),
   register: (code) => ipcRenderer.invoke('licence:register', code),
   readDevice: (dev) => ipcRenderer.invoke('device:read', dev),
