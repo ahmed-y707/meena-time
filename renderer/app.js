@@ -1,5 +1,5 @@
 // Login → home (4 tiles + trial notice) → Arabic menu bar, as in Apex Time.
-const VERSION = '1.3.0'
+const VERSION = '1.0.0'
 const TRIAL_REPORTS = [
   'الحضور والانصراف تفصيلي',
   'الحضور والانصراف إجمالي',
@@ -23,12 +23,13 @@ const MENUS = [
     ['إضافة أجازات لموظف', openLeaves, 'i_leave'], ['إضافة أذونات لموظف', openPermissions, 'i_perm'], '-',
     ['ترحيل الحركات', postPunches, 'i_post'], ['الغاء ترحيل الحركات', openUnpost, 'i_unpost'], '-', ['الغاء جميع بيانات الموظف بالنظام', purgeEmployee, 'i_purge'],
   ] },
+  { label: 'المدرسة', icon: 'm_proc', items: [['رسائل أولياء الأمور', openGuardianMessages, 'i_perm'], ['استقبال البصمات من الأجهزة مباشرة', openDeviceReceiver, 'i_device']] },
   { label: 'التقارير', icon: 'm_rep', items: Object.keys(REPORTS).map((r) => [r, () => openReport(r), REPORT_ICONS[r] || 'r_doc']) },
   { label: 'الاعدادات', icon: 'm_set', items: [['بيانات المؤسسه', openCompany, 'i_company'],
     ['اعدادات المستخدمين', [['صلاحيات المستخدمين', openRoles, 'i_roles'], ['إدارة المستخدمين', openUsers, 'i_users']], 'i_users'], ['اعدادات النظام', openSystemSettings, 'i_settings'], '-',
     ['الربط بالموقع', openWebLinkLocked, 'i_link']] },
   { label: 'ادوات', icon: 'm_tools', items: [['تعديل بيانات الدخول', openChangeLogin, 'i_login']] }, // Apex: nothing else here (backups run daily on their own)
-  { label: 'مساعده', icon: 'm_help', items: [['فهرس المحتويات', openGuide, 'i_book'], ['تسجيل المنتج', () => openRegister(), 'i_lock'], ['عن الشركة', async () => { const p = await window.bridge.paths(); UI.message(`Meena Time — الإصدار ${VERSION}\nمجلد البيانات: ${p.data}\nالنسخ الاحتياطية: ${p.backups} (نسخة تلقائية يومياً، آخر 30 نسخة)`) }, 'i_info']] },
+  { label: 'مساعده', icon: 'm_help', items: [['فهرس المحتويات', openGuide, 'i_book'], ['تسجيل المنتج', () => openRegister(), 'i_lock'], ['عن الشركة', async () => { const p = await window.bridge.paths(); UI.message(`Masar Time — الإصدار ${VERSION}\nمجلد البيانات: ${p.data}\nالنسخ الاحتياطية: ${p.backups} (نسخة تلقائية يومياً، آخر 30 نسخة)`) }, 'i_info']] },
 ]
 
 let licence = { ok: false }
@@ -37,7 +38,7 @@ const Session = (window.Session = { userId: null, username: '', admin: false, pe
 function setCaption() {
   // Apex shows this line in the window's own title bar
   document.title = document.getElementById('caption-text').textContent =
-    `Meena Time Ver. ${VERSION} (${licence.ok ? licence.edition : 'Trial'}) ${licence.ok ? (licence.trial ? `حتى ${licence.expires}` : 'Registered') : 'Unregistered'}${DB.year !== 'main' ? ` — ${DB.year}` : ''}`
+    `Masar Time Ver. ${VERSION} (${licence.ok ? licence.edition : 'Trial'}) ${licence.ok ? (licence.trial ? `حتى ${licence.expires}` : 'Registered') : 'Unregistered'}${DB.year !== 'main' ? ` — ${DB.year}` : ''}`
 }
 
 function buildMenu() {
@@ -215,7 +216,7 @@ async function login() {
   const last = localStorage.getItem('mt-last-user') || 'أ'
   return UI.dialog({
     head: 'شاشة الدخول', width: 534,
-    foot: `Meena Time Ver. ${VERSION} ${licence.ok ? 'Registered' : 'Unregistered'}`,
+    foot: `Masar Time Ver. ${VERSION} ${licence.ok ? 'Registered' : 'Unregistered'}`,
     // another database: remember the choice and restart on it (each database has its own users)
     onOpen: (d) => d.root.querySelector('#year').addEventListener('change', async (e) => {
       if (await window.bridge.useDb(e.target.value)) window.bridge.relaunch()
@@ -410,6 +411,7 @@ function openRestore() {
   await DB.init()
   await DB.open()
   licence = await window.bridge.licenceStatus()
+  School.start() // live punches + guardian messages run from here on, even at the login screen
   if (licence.locked) await lockScreen(licence)
   setCaption()
   await login()

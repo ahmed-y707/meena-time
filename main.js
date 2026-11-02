@@ -1,17 +1,19 @@
 // Electron main process: one window, the database file in the user's data
 // folder (no XAMPP, no fixed drive), and the licence check.
-const { app, BrowserWindow, ipcMain, Menu, dialog, safeStorage, screen } = require('electron')
+const { app, BrowserWindow, ipcMain, Menu, dialog, safeStorage, screen, powerSaveBlocker } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { requestCode, verifyLicence } = require('./lib/license')
 const { createGuard } = require('./lib/guard')
+const { createGate } = require('./lib/gate')
 
 // Demo: own data folder, starts with the test data, all features unlocked.
 // Installer: demo/demo-data.sqlite is bundled by tools/build-demo.sh (normal
 // builds have no demo/). From source: `npm run demo` (= electron . --demo).
 const DEMO_DB = process.argv.includes('--demo') ? path.join(__dirname, 'tools', 'demo-data.sqlite') : path.join(__dirname, 'demo', 'demo-data.sqlite')
 const DEMO = fs.existsSync(DEMO_DB)
-if (DEMO) app.setPath('userData', path.join(app.getPath('appData'), 'Meena Time Demo'))
+// school edition: its own data folder, apart from a normal Meena Time on the same PC
+if (!process.argv.some((a) => a.startsWith('--user-data-dir'))) app.setPath('userData', path.join(app.getPath('appData'), DEMO ? 'Masar Time School Demo' : 'Masar Time School'))
 const dataDir = () => app.getPath('userData')
 // one database for all years (v1.0); `name` = 'main', a 4-digit year for a v0.x per-year file, or an
 // extra database made from «انشاء قاعدة بيانات» (Apex keeps several: «قاعدة البيانات الحالية/الجديدة»)
@@ -29,17 +31,18 @@ const TRIAL_BUILD = path.join(__dirname, 'trial-build.json')
 const guard = createGuard({ dataDir, licencePath, buildTrial: fs.existsSync(TRIAL_BUILD) ? (JSON.parse(fs.readFileSync(TRIAL_BUILD, 'utf8')).token || 'invalid') : null })
 app.whenReady().then(() => { guard.checkNetTime(); setInterval(() => guard.checkNetTime(), 30 * 60e3) })
 
+let mainWin = null
 function createWindow() {
-  const win = new BrowserWindow({
+  const win = (mainWin = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 640,
-    title: 'Meena Time',
+    title: 'Masar Time — المدارس',
     backgroundColor: '#3fc1e9',
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
-  })
+  }))
   win.maximize() // Apex Time opens maximized
   // a bigger, «zoomed-in» program: 125 % where the screen is wide enough for the widest windows
   // (≈1110 px); Ctrl + / Ctrl − / Ctrl 0 adjust it and the choice is kept
@@ -277,5 +280,10 @@ app.whenReady().then(() => {
   }
   dailyBackup()
   createWindow()
+  gate = createGate({ dir: path.join(dataDir(), 'gate'), ipcMain, window: () => mainWin })
+  // the school PC must not sleep while it receives punches and sends messages
+  powerSaveBlocker.start('prevent-app-suspension')
 })
+let gate = null
+app.on('before-quit', () => { try { gate?.stop() } catch {} })
 app.on('window-all-closed', () => app.quit())

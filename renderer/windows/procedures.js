@@ -26,7 +26,8 @@ function parsePunchFile(text) {
 // («موظف جديد» / New Employee — complete the name and shift in «الموظفين»), except while
 // the site owns the employee list (linked) or the trial's employee limit is reached.
 // Optional period {from, to} keeps only punches inside it (Apex «الفترة»).
-async function storePunches(list, source, deviceId = null, { from = null, to = null, autoCreate = true } = {}) {
+// flush: false — the caller saves later (the school gate batches many drains into one save)
+async function storePunches(list, source, deviceId = null, { from = null, to = null, autoCreate = true, flush = true } = {}) {
   const known = new Set(DB.all('SELECT code FROM employees').map((e) => e.code))
   let added = 0, dup = 0, unknown = 0, posted = 0, outside = 0, created = 0
   const canCreate = autoCreate && !WebSync.linked
@@ -52,7 +53,7 @@ async function storePunches(list, source, deviceId = null, { from = null, to = n
   }
   DB.run('COMMIT')
   if (created) DB.audit('موظفين جدد من الحركات', `${created}`, 'أضيفوا تلقائياً عند قراءة الحركات')
-  await DB.flush()
+  if (flush) await DB.flush()
   if (added && WebSync.linked) WebSync.sync({ quiet: true }) // send them to the site
   return { added, dup, unknown, posted, outside, created, total: list.length,
     text: `تمت قراءة ${list.length} حركة: جديدة ${added} · مكررة ${dup}` + (created ? ` · موظفين جدد ${created} (أكمل بياناتهم من «الموظفين»)` : '') +

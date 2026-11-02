@@ -680,3 +680,39 @@ table.rep th.blank, table.rep th.grp { background: #fff; }
 .sys-set.apex .row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .sys-set.apex .row > label { flex: 1; color: #0000ff; font-weight: normal; }
 .sys-set.apex .row input, .sys-set.apex .row select { width: 150px; text-align: center; }
+
+/* school edition: guardian messages + live receiver (Apex look: orange fieldsets, blue labels) */
+.sys-set.apex.school { display: flex; flex-direction: column; gap: 10px; }
+.school .school-top { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.school fieldset { padding-bottom: 10px; }
+.school .wa-body { text-align: center; min-height: 120px; }
+.school .wa-body img { width: 190px; border: 6px solid #fff; box-shadow: 0 0 0 1px #ccc; }
+.school .wa-body ol { text-align: right; font-size: 13px; margin: 6px 20px 0; }
+.school .state { display: inline-block; font-weight: bold; padding: 4px 12px; border-radius: 4px; background: #fff3cd; color: #7a5a00; }
+.school .state.ok { background: #d4f5dc; color: #126b2b; } .school .state.bad { background: #fde2e2; color: #9b1c1c; }
+.school .btns { display: flex; gap: 8px; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
+.school .btn { padding: 4px 12px; border: 1px solid #7aa7d6; background: linear-gradient(#fff, #dde9f6); border-radius: 3px; cursor: pointer; }
+.school .btn:hover { background: linear-gradient(#fff, #c9dcf2); }
+.school label.big { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: bold; color: #0000ff; margin: 6px 0 10px; }
+.school label.big input { width: 22px; height: 22px; }
+.school .kpis { display: flex; flex-wrap: wrap; gap: 6px; }
+.school .kpi { flex: 1 0 70px; border: 1px solid #ccc; border-top: 3px solid #2e9b3a; background: #fff; text-align: center; padding: 4px; }
+.school .kpi b { display: block; font-size: 20px; } .school .kpi span { font-size: 12px; color: #555; }
+.school .kpi.amber { border-top-color: #e3a018; } .school .kpi.red { border-top-color: #d64545; } .school .kpi.grey { border-top-color: #999; }
+.school .banner { background: #fff3cd; border: 1px solid #f0d28a; padding: 6px 10px; color: #6b4a00; }
+.school .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.school .row > label input[type=checkbox] { vertical-align: middle; margin-left: 6px; }
+.school .row input[type=text] { width: 170px; }
+.school .row input.num { width: 70px; }
+.school label.ta { display: block; color: #0000ff; margin-bottom: 6px; }
+.school label.ta textarea { display: block; width: 100%; box-sizing: border-box; font: inherit; margin-top: 2px; }
+.school .hint { color: #555; font-size: 12px; margin: 4px 0; line-height: 1.7; }
+.school .state-line { margin: 6px 0; }
+.school fieldset.log { flex: 1; min-height: 160px; display: flex; flex-direction: column; }
+.school .grid-wrap { flex: 1; overflow: auto; }
+.school table.grid { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; }
+.school table.grid th { background: #ffd280; position: sticky; top: 0; padding: 4px; border: 1px solid #c9a24a; }
+.school table.grid td { border: 1px solid #ddd; padding: 3px 5px; vertical-align: top; }
+.school td.ok { color: #126b2b; font-weight: bold; } .school td.bad { color: #b00; font-weight: bold; }
+.school td.msg { white-space: pre-wrap; color: #444; max-width: 340px; }
+.school td.empty { text-align: center; color: #777; padding: 16px; }

@@ -30,4 +30,16 @@ contextBridge.exposeInMainWorld('bridge', {
   webConfig: () => ipcRenderer.invoke('web:config'),
   webSetConfig: (cfg) => ipcRenderer.invoke('web:setConfig', cfg),
   webCall: (method, p, body, override) => ipcRenderer.invoke('web:call', method, p, body, override),
+  // school gate: live device punches, guardian messages, WhatsApp
+  gateDrain: (max) => ipcRenderer.invoke('gate:drain', max),
+  gateAck: (next) => ipcRenderer.invoke('gate:ack', next),
+  gateStatus: () => ipcRenderer.invoke('gate:status'),
+  gateRoster: (r) => ipcRenderer.invoke('gate:roster', r),
+  gateLog: (limit) => ipcRenderer.invoke('gate:log', limit),
+  gateAbsence: () => ipcRenderer.invoke('gate:absence'),
+  gateTest: (phone) => ipcRenderer.invoke('gate:test', phone),
+  gateSettings: (patch) => ipcRenderer.invoke('gate:settings', patch),
+  gateWa: (action) => ipcRenderer.invoke('gate:wa', action),
+  noTerms: process.env.MASAR_NO_TERMS === '1',
+  onGate: (channel, cb) => { if (channel === 'gate:new' || channel === 'gate:changed') ipcRenderer.on(channel, () => cb()) },
 })

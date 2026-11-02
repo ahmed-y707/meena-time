@@ -5,7 +5,7 @@ import { _electron as electron } from '/home/frappeuser/tamken3-audit/node_modul
 import fs from 'fs'
 import { execFileSync } from 'child_process'
 
-const ROOT = '/root/meena-time'
+const ROOT = process.env.MT_ROOT || '/root/meena-time'
 const SHOTS = `${ROOT}/test-shots`
 const UD = '/tmp/mt-fulltest'
 fs.rmSync(SHOTS, { recursive: true, force: true }); fs.mkdirSync(SHOTS, { recursive: true })
@@ -83,7 +83,7 @@ for (const [t, n] of [['الإجراءات', 7], ['التقارير', 10], ['ا�
 check('home: trial banner shown when unregistered', await p.locator('.trial').isVisible())
 check('caption: Unregistered', /Unregistered/.test(await p.locator('#caption-text').textContent()))
 check('caption: version matches package.json', (await p.locator('#caption-text').textContent()).includes(`Ver. ${JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).version} `))
-check('menubar: 7 menus', (await p.locator('#menubar .menu').count()) === 7)
+check('menubar: 8 menus (school edition adds «المدرسة»)', (await p.locator('#menubar .menu').count()) === 8)
 
 // every menu opens and lists its items
 for (const [m, n] of [['ملف', 2], ['البيانات الأساسية', 8], ['الإجراءات', 9], ['التقارير', 14], ['الاعدادات', 6], ['ادوات', 1], ['مساعده', 3]]) {
