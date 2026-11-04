@@ -52,7 +52,8 @@ const UI = {
     this.wins.set(id, { win, title, permKey })
     this.focus(id)
     this.renderStrip()
-    render(win.querySelector('.body'), { close: () => this.close(id), permKey })
+    // onClose(fn): fn() → false keeps the window open (e.g. «unsaved changes» answered with إلغاء)
+    render(win.querySelector('.body'), { close: () => this.close(id), permKey, onClose: (fn) => { this.wins.get(id).guard = fn } })
     Perm.apply(win, permKey)
   },
   focus(id) {
@@ -64,9 +65,15 @@ const UI = {
     for (const [k, o] of this.wins) o.win.style.display = k === id ? '' : 'none'
     this.renderStrip()
   },
-  close(id) {
+  async close(id) {
     const w = this.wins.get(id)
-    if (!w) return
+    if (!w || w.closing) return
+    if (w.guard) {
+      w.closing = true
+      const ok = await w.guard().catch(() => true)
+      w.closing = false
+      if (!ok) return
+    }
     w.win.remove()
     this.wins.delete(id)
     if (this.active === id) {
