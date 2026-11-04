@@ -31,6 +31,20 @@ function openShiftTimes(group, onSaved) {
       return { off, periods: [0, 1, 2, 3].map((i) => Object.fromEntries(COLS.map(([k, col]) => [k, live[i]?.[col] != null ? String(live[i][col]) : k === 'late' || k === 'early' ? '0' : '']))) }
     })
     let cur = 0
+    // what is on disk — closing with anything else asks first (times used to vanish when the window was closed before «حفظ»)
+    let saved = JSON.stringify(days)
+    win.onClose(async () => {
+      read()
+      if (JSON.stringify(days) === saved) return true
+      UI.focus(`shift-times-${g.id}`)
+      const ans = await UI.dialog({ head: 'تأكيد', msg: true, width: 420,
+        bodyHtml: '<div class="msg-icon q">?</div><div class="msg-text">لم يتم حفظ مواعيد العمل. هل تريد حفظ التغييرات قبل الإغلاق؟</div>',
+        buttons: [{ label: 'حفظ', icon: 'save', onClick: (d) => d.close('save') }, { label: 'عدم الحفظ', icon: 'close', onClick: (d) => d.close('drop') },
+          { label: 'إلغاء', icon: 'cancel', onClick: (d) => d.close('cancel') }] })
+      if (ans === 'drop') return true
+      if (ans === 'save') return save()
+      return false
+    })
 
     const bar = UI.toolbar([
       { key: 'help', label: 'مساعده', icon: 'help', onClick: () => UI.message('حدد مواعيد كل يوم من تبويبه: لكل فترة «تبدأ من» و«إلى» وأوقات بداية ونهاية الحضور والانصراف والتأخير والخروج المبكر المسموح بالدقائق.\n«تكرار» يطبق مواعيد اليوم المعروض على كل الأيام، ثم «حفظ».\nحدد «هذا اليوم أجازة» لأيام العطلة الأسبوعية.') },
@@ -132,18 +146,18 @@ function openShiftTimes(group, onSaved) {
     }
 
     async function save() {
-      if (WebSync.blocks('shift_groups')) return
+      if (WebSync.blocks('shift_groups')) return false
       read()
       const plan = []
       for (const [i, d] of days.entries()) {
         if (d.off) { plan.push(null); continue }
         if (open) {
-          if (!isHHMM(d.hours) || toMin(d.hours) === 0) { cur = i; draw(); return UI.message(`${DAYS[i]}: عدد ساعات العمل بصيغة HH:MM`) }
+          if (!isHHMM(d.hours) || toMin(d.hours) === 0) { cur = i; draw(); UI.message(`${DAYS[i]}: عدد ساعات العمل بصيغة HH:MM`); return false }
           plan.push(toMin(d.hours))
           continue
         }
         const ws = windowsOf(d, DAYS[i])
-        if (typeof ws === 'string') { cur = i; draw(); return UI.message(ws) }
+        if (typeof ws === 'string') { cur = i; draw(); UI.message(ws); return false }
         plan.push(ws)
       }
       DB.run('BEGIN')
@@ -165,6 +179,8 @@ function openShiftTimes(group, onSaved) {
       // show the filled-in punch windows
       days.forEach((d, i) => { if (!open && plan[i]) plan[i].forEach((w, k) => Object.assign(d.periods[k], { si: w.start_in, ei: w.end_in, so: w.start_out, eo: w.end_out })) })
       draw()
+      saved = JSON.stringify(days)
+      return true
     }
     draw()
   })
