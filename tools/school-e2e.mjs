@@ -50,7 +50,7 @@ try {
 
   ;({ app, p } = await launch())
   await login(p, true)
-  check('caption: Masar Time, registered', /^Masar Time Ver\. 1\.0\.2 \(School\) Registered/.test(await p.title()), await p.title())
+  check('caption: Masar Time, registered', /^Masar Time Ver\. 1\.0\.3 \(School\) Registered/.test(await p.title()), await p.title())
   const bar = await p.locator('#menubar').textContent()
   check('menu bar: «المدرسة»', bar.includes('المدرسة'))
   await p.locator('#menubar .menu > button', { hasText: 'البيانات الأساسية' }).first().click(); await p.waitForTimeout(300)

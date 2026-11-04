@@ -1,7 +1,7 @@
 {
   "name": "masar-time-school",
   "productName": "Masar Time School",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Masar Time — school edition: live device punches, guardian SMS + WhatsApp",
   "main": "main.js",
   "scripts": {
