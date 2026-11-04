@@ -47,19 +47,30 @@ const Engine = {
   dates(from, to) { const out = []; for (let d = from; d <= to; d = this.addDays(d, 1)) out.push(d); return out },
   today() { return this.iso(new Date()) },
 
-  // Resolve a list of window rows into absolute minutes from the day's 00:00,
-  // rolling any time that goes backwards (past midnight) forward by 24h.
+  // Resolve a day's periods into absolute minutes from the day's 00:00. A period's start earlier than
+  // the period before it, or an end earlier than its start, is on the next day. Punch-window times may
+  // be in any order (Apex saves them as typed), so each is placed on its own against its start / end
+  // and can never move the period to another day.
   resolveWindows(rows) {
-    let last = -1
-    return rows.map((w) => {
-      const r = { ...w }
-      for (const k of ['start_in', 'check_in', 'end_in', 'start_out', 'check_out', 'end_out']) {
-        let m = this.toMin(w[k])
-        while (m < last) m += 1440
-        r[k] = m
-        last = m
-      }
-      return r
+    const around = (t, ref, back, ahead) => {
+      let m = this.toMin(t)
+      if (m == null) return null
+      while (m < ref - back) m += 1440
+      while (m >= ref + ahead) m -= 1440
+      return m
+    }
+    let prev = null
+    return rows.map((w, i) => {
+      let b = this.toMin(w.check_in), e = this.toMin(w.check_out)
+      while (prev != null && b < prev) b += 1440
+      e += b - (b % 1440)
+      if (e < b) e += 1440
+      let t = { start_in: around(w.start_in, b, 1080, 360), check_in: b, end_in: around(w.end_in, b, 360, 1080),
+        start_out: around(w.start_out, e, 1080, 360), check_out: e, end_out: around(w.end_out, e, 360, 1080) }
+      // a night shift opening for punches before midnight and starting after it (20:00 → 01:00) belongs to the evening's date
+      if (!i && t.start_in < 0) t = Object.fromEntries(Object.entries(t).map(([k, m]) => [k, m == null ? m : m + 1440]))
+      prev = t.check_in
+      return { ...w, ...t }
     })
   },
 
@@ -78,7 +89,10 @@ const Engine = {
     const rows = cfg.win[groupId]?.[`Y:${day}`] || []
     if (!rows.length || rows[0].is_off) return { kind: 'off' }
     if (g.open_shift) return { kind: 'open', open: rows[0] }
-    return { kind: 'windows', windows: this.resolvedFor(cfg, `${groupId}:${day}`, rows) }
+    // a period without both «تبدأ من» and «إلى» can be saved (as in Apex) but isn't worked
+    const usable = rows.filter((w) => w.check_in && w.check_out)
+    if (!usable.length) return { kind: 'off' }
+    return { kind: 'windows', windows: this.resolvedFor(cfg, `${groupId}:${day}`, usable) }
   },
   resolvedFor(cfg, key, rows) { return ((cfg._resolved ||= {})[key] ||= this.resolveWindows(rows)) },
 

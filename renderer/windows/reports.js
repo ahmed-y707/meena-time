@@ -57,6 +57,7 @@ const REPORTS = {
       for (const w of ws) {
         const slot = DAY_NAMES[w.slot]
         if (w.is_off) rows.push([g.name_ar, kind(g), slot, 'أجازة', '', '', ''])
+        else if (!g.open_shift && !(w.check_in && w.check_out)) continue
         else if (g.open_shift) rows.push([g.name_ar, kind(g), slot, `${H(w.required_min)} ساعة`, '', '', w.extends_next_day ? `ينتهي في اليوم التالي ${w.day_end}` : ''])
         else rows.push([g.name_ar, kind(g), slot, `${WIN_NAMES[w.window_no - 1]}`, w.check_in, w.check_out, `${w.late_min} / ${w.early_min}`])
       }
