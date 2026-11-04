@@ -41,17 +41,16 @@ const post = (sn, lines) => fetch(`http://127.0.0.1:${PORT}/iclock/cdata?SN=${sn
 const count = (p, sql, args = []) => p.evaluate(([s, a]) => DB.one(s, a)?.n, [sql, args])
 
 try {
-  // 1. licence (the unregistered program allows 3 people only)
+  // 1. school edition = full access: no licence code needed
   let { app, p } = await launch()
   await p.waitForSelector('text=شاشة الدخول', { timeout: 30000 })
-  const req = (await p.evaluate(() => window.bridge.licenceStatus())).requestCode
-  const lic = execFileSync('node', [`${ROOT}/tools/keygen.js`, req, 'Gold'], { encoding: 'utf8' }).trim()
-  check('licence accepted', (await p.evaluate((l) => window.bridge.register(l), lic)).ok)
+  const st0 = await p.evaluate(() => window.bridge.licenceStatus())
+  check('full access without a code', st0.ok && !st0.locked && !st0.trial)
   await app.close()
 
   ;({ app, p } = await launch())
   await login(p, true)
-  check('caption: Masar Time, registered', /^Masar Time Ver\. 1\.0\.0 \(Gold\) Registered/.test(await p.title()), await p.title())
+  check('caption: Masar Time, registered', /^Masar Time Ver\. 1\.0\.2 \(School\) Registered/.test(await p.title()), await p.title())
   const bar = await p.locator('#menubar').textContent()
   check('menu bar: «المدرسة»', bar.includes('المدرسة'))
   await p.locator('#menubar .menu > button', { hasText: 'البيانات الأساسية' }).first().click(); await p.waitForTimeout(300)

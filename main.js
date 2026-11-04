@@ -101,8 +101,11 @@ ipcMain.handle('db:save', (_e, year, bytes) => {
   fs.renameSync(tmp, dbPath(year)) // atomic replace: a crash never leaves a half-written DB
   return true
 })
+// school edition = full access (owner 2026-11-04): no licence code, no 3-student limit, no lock
+const FULL_ACCESS = process.env.MASAR_BASE_LICENCE !== '1' // =1 only for the base suite (tools/full-test.mjs tests the unregistered limits)
 ipcMain.handle('licence:status', () => {
   if (DEMO) return { requestCode: requestCode(), ok: true, edition: 'Demo' }
+  if (FULL_ACCESS) return { requestCode: requestCode(), ok: true, edition: 'School' }
   return guard.status()
 })
 ipcMain.handle('licence:register', async (_e, code) => {
