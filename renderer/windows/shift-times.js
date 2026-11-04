@@ -3,9 +3,11 @@
 // نهاية الحضور · بداية الانصراف · نهاية الانصراف · التأخير · الخروج المبكر), with Apex's «هام جدا»
 // note beside them. An open shift's day holds only أجازة + its working hours.
 // «تكرار» copies the day shown to every day.
-// Times are in order through the day; a time earlier than the one before it is on the next day,
-// so a night period (22:00 → 06:00) needs no extra setting. Punch windows left empty are filled in:
-// half-way to the neighbouring period, or 4 h before the first / after the last one.
+// Saving follows Apex: it refuses only an impossible time (✖, no message) and «تبدأ من» without «إلى»
+// («أدخل موعد إنتهاء الفترة»). Times out of order get Apex's red ✖ when leaving the field, and still save.
+// An «إلى» earlier than «تبدأ من» is on the next day, so a night period (22:00 → 06:00) needs no extra
+// setting. Punch windows left empty are filled in: half-way to the neighbouring period, or 4 h before
+// the first / after the last one.
 const DAYS = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة']
 const WIN_NAMES = ['الفترة الأولى', 'الفترة الثانية', 'الفترة الثالثة', 'الفترة الرابعة']
 // [state key, shift_windows column, Apex header]
@@ -15,6 +17,8 @@ const TIME_KEYS = ['b', 'e', 'si', 'ei', 'so', 'eo']
 const isHHMM = (t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t || '')
 const toMin = (t) => (isHHMM(t) ? +t.slice(0, 2) * 60 + +t.slice(3) : null)
 const hm = (m) => Engine.hm(((m % 1440) + 1440) % 1440)
+// [field, the field before it]: leaving the field with a time not after that one shows the ✖
+const ORDER = { e: 'b', ei: 'si', so: 'ei', eo: 'so' }
 const MARGIN = 240 // minutes a first / last period's punch window reaches before its start / after its end
 const NOTE = 'في حاله التعديل علي دوام . وهذا الدوام ارتبط بموظفين يجب الغاء الحركات والترحيل مره اخري وذلك لحساب ساعات العمل علي الدوام الجديد ( الدوام المعدل )'
 
@@ -28,9 +32,21 @@ function openShiftTimes(group, onSaved) {
       const off = rows.length ? !!rows[0].is_off : d === 6
       if (open) return { off, hours: rows[0]?.required_min != null ? Engine.hm(rows[0].required_min) : '' }
       const live = rows.filter((r) => !r.is_off)
-      return { off, periods: [0, 1, 2, 3].map((i) => Object.fromEntries(COLS.map(([k, col]) => [k, live[i]?.[col] != null ? String(live[i][col]) : k === 'late' || k === 'early' ? '0' : '']))) }
+      return { off, periods: [0, 1, 2, 3].map((i) => { const r = live.find((x) => x.window_no === i + 1); return Object.fromEntries(COLS.map(([k, col]) => [k, r?.[col] != null ? String(r[col]) : k === 'late' || k === 'early' ? '0' : ''])) }) }
     })
     let cur = 0
+    const bad = DAYS.map(() => new Set()) // the ✖ fields of each day, as "period:field"
+    // punch windows the program filled in (not typed): they follow the period if its times change,
+    // so a later edit can't leave them pointing at the old times
+    const autos = DAYS.map(() => new Set())
+    const AUTO_KEYS = ['si', 'ei', 'so', 'eo'], COL_OF = { si: 'start_in', ei: 'end_in', so: 'start_out', eo: 'end_out' }
+    function findAutos(i) {
+      autos[i] = new Set()
+      if (open || days[i].off) return
+      const rows = windowsOf({ periods: days[i].periods.map((p) => ({ ...p, si: '', ei: '', so: '', eo: '' })) })
+      if (!Array.isArray(rows)) return
+      for (const w of rows) for (const k of AUTO_KEYS) if (w.check_in && w.check_out && days[i].periods[w.window_no - 1][k] === w[COL_OF[k]]) autos[i].add(`${w.window_no - 1}:${k}`)
+    }
     // what is on disk — closing with anything else asks first (times used to vanish when the window was closed before «حفظ»)
     let saved = JSON.stringify(days)
     win.onClose(async () => {
@@ -52,7 +68,7 @@ function openShiftTimes(group, onSaved) {
         read()
         if (!(await UI.confirm('سيتم تكرار مواعيد العمل لجميع أيام الأسبوع عدا أيام الاجازات هل أنت متأكد؟'))) return
         const src = JSON.stringify(days[cur])
-        days.forEach((d, i) => { if (i !== cur && !d.off) days[i] = JSON.parse(src) })
+        days.forEach((d, i) => { if (i !== cur && !d.off) { days[i] = JSON.parse(src); bad[i] = new Set(bad[cur]); autos[i] = new Set(autos[cur]) } })
         draw()
       } },
       { key: 'save', label: 'حفظ', icon: 'save', onClick: save },
@@ -78,7 +94,7 @@ function openShiftTimes(group, onSaved) {
     }
     const dayTotal = (d) => d.periods.reduce((s, p) => {
       const b = toMin(p.b), e = toMin(p.e)
-      return b == null || e == null ? s : s + (e > b ? e - b : e + 1440 - b)
+      return b == null || e == null ? s : s + (e >= b ? e - b : e + 1440 - b)
     }, 0)
     function draw() {
       view.querySelectorAll('.st-tabs button').forEach((b) => b.classList.toggle('on', +b.dataset.d === cur))
@@ -94,55 +110,80 @@ function openShiftTimes(group, onSaved) {
           </tbody></table></div>
           <div class="st-note"><b>هام جدا</b><p>${NOTE}</p></div></div>`
       $('#st-off').addEventListener('change', () => { read(); draw() })
+      if (!open) for (const key of bad[cur]) mark(key, true)
     }
-    if (!open) $('.st-body').addEventListener('input', () => { read(); $('#st-hours').value = Engine.hm(dayTotal(days[cur])) })
-
-    // a working day's periods → the engine's windows (or an error message)
-    function windowsOf(d, name) {
-      const ps = d.periods.map((p, i) => ({ ...p, i })).filter((p) => TIME_KEYS.some((k) => p[k]))
-      if (!ps.length) return `${name}: أدخل مواعيد الفترة الأولى أو حدد «هذا اليوم أجازة»`
-      if (ps.some((p, k) => p.i !== k)) return `${name}: أدخل الفترات بالترتيب بدون ترك فترة فارغة بينها`
-      // check format, put «تبدأ من» / «إلى» on one time line (past midnight → +1440)
-      let last = -1
-      const abs = []
-      for (const p of ps) {
-        const where = `${name} — ${WIN_NAMES[p.i]}`
-        if (!isHHMM(p.b) || !isHHMM(p.e)) return `${where}: «تبدأ من» و«إلى» بصيغة HH:MM`
-        for (const k of ['si', 'ei', 'so', 'eo']) if (p[k] && !isHHMM(p[k])) return `${where}: الوقت بصيغة HH:MM`
-        if (!/^\d{1,3}$/.test(p.late || '0') || !/^\d{1,3}$/.test(p.early || '0')) return `${where}: التأخير والخروج المبكر بالدقائق`
-        let b = toMin(p.b), e = toMin(p.e)
-        if (b <= last) return `${where}: الأوقات يجب أن تكون متتالية`
-        if (e <= b) e += 1440
-        abs.push({ p, where, b, e, late: +p.late || 0, early: +p.early || 0 })
-        last = e
-      }
-      if (abs.at(-1).e - abs[0].b >= 1440) return `${name}: مدة الدوام أكثر من 24 ساعة`
-      if (abs.slice(0, -1).some((a) => a.e >= 1440)) return `${name}: الفترة الأخيرة فقط يمكن أن تنتهي في اليوم التالي`
-      // the punch windows: entered, or filled in
-      const near = (m, ref) => { while (m < ref - 720) m += 1440; while (m > ref + 720) m -= 1440; return m }
-      const out = []
-      for (const [i, a] of abs.entries()) {
-        const before = i ? Math.round((abs[i - 1].e + a.b) / 2) + 1 : a.b - MARGIN
-        const after = i < abs.length - 1 ? Math.round((a.e + abs[i + 1].b) / 2) : a.e + MARGIN
-        const mid = Math.min(Math.max(Math.round((a.b + a.e) / 2), a.b + a.late), a.e - a.early)
-        const t = {
-          si: a.p.si ? near(toMin(a.p.si), a.b) : Math.max(before, a.b - MARGIN, i ? -Infinity : a.e - 1439),
-          ei: a.p.ei ? near(toMin(a.p.ei), a.b) : mid,
-          so: a.p.so ? near(toMin(a.p.so), a.e) : mid,
+    function mark(key, on) {
+      const [i, k] = key.split(':')
+      view.querySelector(`tr[data-i="${i}"] [data-f=${k}]`)?.closest('td').classList.toggle('st-bad', on)
+    }
+    // Apex checks a field as the cursor leaves it (after the typing mask has settled)
+    if (!open) $('.st-body').addEventListener('focusout', (ev) => {
+      const k = ev.target.dataset?.f, tr = ev.target.closest?.('tr[data-i]')
+      if (!tr || !TIME_KEYS.includes(k)) return
+      setTimeout(() => {
+        if (!ev.target.isConnected) return
+        read()
+        const p = days[cur].periods[+tr.dataset.i], key = `${tr.dataset.i}:${k}`, v = p[k]
+        const before = ORDER[k] && p[ORDER[k]]
+        const wrong = !!v && (!isHHMM(v) || (isHHMM(before) && toMin(v) <= toMin(before) && !(k === 'eo' && v === '00:00')))
+        if (wrong) bad[cur].add(key); else bad[cur].delete(key)
+        mark(key, wrong)
+      })
+    })
+    if (!open) $('.st-body').addEventListener('input', (ev) => {
+      read()
+      const f = ev.target.dataset?.f, row = ev.target.closest?.('tr[data-i]')?.dataset.i
+      if (AUTO_KEYS.includes(f)) autos[cur].delete(`${row}:${f}`)
+      else if (f) { // a period's times changed: empty what was filled in from the old ones, «حفظ» fills it again
+        for (const key of autos[cur]) {
+          const [i, k] = key.split(':')
+          view.querySelector(`tr[data-i="${i}"] [data-f=${k}]`).value = ''
+          days[cur].periods[+i][k] = ''
+          bad[cur].delete(key); mark(key, false)
         }
-        t.eo = a.p.eo ? near(toMin(a.p.eo), a.e) : Math.min(after, (i ? out[0].si : t.si) + 1439)
-        if (a.b + a.late >= a.e - a.early) return `${a.where}: التأخير والخروج المبكر أكبر من مدة الفترة`
-        if (t.si > a.b) return `${a.where}: «بداية الحضور» يجب أن تكون قبل «تبدأ من»`
-        if (t.ei <= a.b + a.late) return `${a.where}: «نهاية الحضور» يجب أن تكون بعد «تبدأ من» + التأخير`
-        if (t.so < t.ei) return `${a.where}: «بداية الانصراف» لا يمكن أن يكون قبل «نهاية الحضور»`
-        if (t.so >= a.e - a.early) return `${a.where}: «بداية الانصراف» يجب أن تكون قبل «إلى» - الخروج المبكر`
-        if (t.eo < a.e) return `${a.where}: «نهاية الانصراف» لا يمكن أن يكون قبل «إلى»`
-        if (i && t.si <= out[i - 1].eo) return `${a.where}: «بداية الحضور» لا يمكن أن يكون قبل «نهاية الانصراف» للفترة السابقة`
-        out.push({ ...t, a })
+        autos[cur].clear()
       }
-      if (out.at(-1).eo - out[0].si >= 1440) return `${name}: من «بداية الحضور» إلى «نهاية الانصراف» أكثر من 24 ساعة`
-      return out.map(({ a, si, ei, so, eo }, i) => ({ start_in: hm(si), check_in: hm(a.b), late_min: a.late, end_in: hm(ei), start_out: hm(so), early_min: a.early,
-        check_out: hm(a.e), end_out: hm(eo), extended: i === out.length - 1 && eo >= 1440 ? 1 : 0 }))
+      $('#st-hours').value = Engine.hm(dayTotal(days[cur]))
+    })
+
+    // a working day's periods → the rows to store. Refuses only what Apex refuses: returns
+    // { field: "period:key" } for an impossible time, { message } for «تبدأ من» without «إلى».
+    function windowsOf(d) {
+      for (const [i, p] of d.periods.entries()) {
+        const k = TIME_KEYS.find((x) => p[x] && !isHHMM(p[x]))
+        if (k) return { field: `${i}:${k}` }
+        if (p.b && !p.e) return { message: 'أدخل موعد إنتهاء الفترة' }
+      }
+      // the periods that have both «تبدأ من» and «إلى», on one time line, to fill in empty punch windows
+      let prev = null
+      const abs = []
+      d.periods.forEach((p, i) => {
+        if (!p.b || !p.e) return
+        let b = toMin(p.b), e = toMin(p.e)
+        while (prev != null && b < prev) b += 1440
+        e += b - (b % 1440)
+        if (e < b) e += 1440
+        abs.push({ i, p, b, e, late: +p.late || 0, early: +p.early || 0 })
+        prev = b
+      })
+      const out = {}
+      abs.forEach((a, n) => {
+        const before = n ? Math.round((abs[n - 1].e + a.b) / 2) + 1 : a.b - MARGIN
+        const after = n < abs.length - 1 ? Math.round((a.e + abs[n + 1].b) / 2) : a.e + MARGIN
+        const mid = Math.min(Math.max(Math.round((a.b + a.e) / 2), a.b + a.late), a.e - a.early)
+        const si = Math.max(before, a.b - MARGIN, n ? -Infinity : a.e - 1439)
+        out[a.i] = { si: a.p.si || hm(si), ei: a.p.ei || hm(mid), so: a.p.so || hm(mid),
+          eo: a.p.eo || hm(Math.min(after, (n ? abs[0].b - MARGIN : si) + 1439)), extended: n === abs.length - 1 && !a.p.eo && a.e + MARGIN >= 1440 ? 1 : 0 }
+      })
+      const rows = []
+      d.periods.forEach((p, i) => {
+        if (!TIME_KEYS.some((k) => p[k]) && !(+p.late || +p.early)) return
+        const t = out[i] || { si: p.si, ei: p.ei, so: p.so, eo: p.eo, extended: 0 }
+        rows.push({ window_no: i + 1, start_in: t.si || null, check_in: p.b || null, late_min: +p.late || 0, end_in: t.ei || null, start_out: t.so || null,
+          early_min: +p.early || 0, check_out: p.e || null, end_out: t.eo || null, extended: t.extended })
+      })
+      // a working day left empty stays a working day, as in Apex (it just has no periods to work)
+      return rows.length ? rows : [{ window_no: 1, late_min: 0, early_min: 0, extended: 0 }]
     }
 
     async function save() {
@@ -156,8 +197,9 @@ function openShiftTimes(group, onSaved) {
           plan.push(toMin(d.hours))
           continue
         }
-        const ws = windowsOf(d, DAYS[i])
-        if (typeof ws === 'string') { cur = i; draw(); UI.message(ws); return false }
+        const ws = windowsOf(d)
+        if (ws.field) { cur = i; bad[i].add(ws.field); draw(); $(`tr[data-i="${ws.field.split(':')[0]}"] [data-f=${ws.field.split(':')[1]}]`)?.focus(); return false }
+        if (ws.message) { cur = i; draw(); UI.message(ws.message); return false }
         plan.push(ws)
       }
       DB.run('BEGIN')
@@ -166,8 +208,8 @@ function openShiftTimes(group, onSaved) {
       plan.forEach((p, d) => {
         if (p == null) return DB.run("INSERT INTO shift_windows (group_id, calendar, slot, window_no, is_off) VALUES (?, 'Y', ?, 1, 1)", [g.id, d])
         if (open) return DB.run("INSERT INTO shift_windows (group_id, calendar, slot, window_no, is_off, required_min, extends_next_day, day_end) VALUES (?, 'Y', ?, 1, 0, ?, 0, NULL)", [g.id, d, p])
-        p.forEach((w, i) => DB.run(`INSERT INTO shift_windows (group_id, calendar, slot, window_no, is_off, start_in, check_in, late_min, end_in, start_out, early_min, check_out, end_out, extended)
-          VALUES (?, 'Y', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [g.id, d, i + 1, w.start_in, w.check_in, w.late_min, w.end_in, w.start_out, w.early_min, w.check_out, w.end_out, w.extended]))
+        p.forEach((w) => DB.run(`INSERT INTO shift_windows (group_id, calendar, slot, window_no, is_off, start_in, check_in, late_min, end_in, start_out, early_min, check_out, end_out, extended)
+          VALUES (?, 'Y', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [g.id, d, w.window_no, w.start_in ?? null, w.check_in ?? null, w.late_min, w.end_in ?? null, w.start_out ?? null, w.early_min, w.check_out ?? null, w.end_out ?? null, w.extended]))
       })
       const total = plan.reduce((s, p, d) => s + (p == null ? 0 : open ? p : dayTotal(days[d])), 0)
       DB.run('UPDATE shift_groups SET total_minutes = ?, rotational = 0 WHERE id = ?', [total, g.id])
@@ -177,11 +219,12 @@ function openShiftTimes(group, onSaved) {
       onSaved?.()
       UI.message('تم حفظ البيانات بنجاح.')
       // show the filled-in punch windows
-      days.forEach((d, i) => { if (!open && plan[i]) plan[i].forEach((w, k) => Object.assign(d.periods[k], { si: w.start_in, ei: w.end_in, so: w.start_out, eo: w.end_out })) })
+      days.forEach((d, i) => { if (!open && plan[i]) plan[i].forEach((w) => Object.assign(d.periods[w.window_no - 1], { si: w.start_in || '', ei: w.end_in || '', so: w.start_out || '', eo: w.end_out || '' })); findAutos(i) })
       draw()
       saved = JSON.stringify(days)
       return true
     }
+    days.forEach((_, i) => findAutos(i))
     draw()
   })
 }

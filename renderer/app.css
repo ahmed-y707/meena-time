@@ -533,6 +533,9 @@ table.rep th.blank, table.rep th.grp { background: #fff; }
 /* Apex «إعداد مواعيد العمل» */
 .st-apex { display: flex; flex-direction: column; gap: 8px; padding: 4px 4px 8px; flex: 1; min-height: 0; }
 .st-apex .st-group { text-align: center; color: var(--label); font-size: 16px; }
+.st-apex .st-grid td.st-bad { position: relative; }
+/* Apex's red ✖ beside a field whose time is out of order: a hint only, «حفظ» still saves */
+.st-apex .st-grid td.st-bad::after { content: '✕'; position: absolute; left: 1px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px; border-radius: 50%; background: #d9202c; color: #fff; font-size: 9px; line-height: 13px; text-align: center; font-weight: bold; pointer-events: none; }
 .st-apex .st-tabs { display: flex; gap: 2px; }
 .st-apex .st-tabs button { flex: 1; height: 40px; font: inherit; font-size: 16px; font-weight: bold; background: #f0f0f0; border: 1px solid #888; border-bottom: 0; color: #000; cursor: pointer; }
 .st-apex .st-tabs button.on { background: #fff; border-width: 2px 2px 0; }
