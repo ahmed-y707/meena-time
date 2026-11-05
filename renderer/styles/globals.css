@@ -1,0 +1,745 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: var(--font-inter), var(--font-arabic), -apple-system, BlinkMacSystemFont, 'Inter', 'Noto Sans Arabic', 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* RTL Support */
+[dir="rtl"] body {
+  font-family: var(--font-arabic), var(--font-inter), 'Noto Sans Arabic', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Urdu (sales vertical): Nastaliq script needs its own font + taller lines.
+   Falls back to the Arabic font (covers Urdu glyphs in naskh) if unavailable. */
+html[lang="ur"] body {
+  font-family: var(--font-urdu), var(--font-arabic), 'Noto Nastaliq Urdu', 'Noto Sans Arabic', sans-serif;
+  line-height: 1.9;
+}
+html[lang="ur"] input,
+html[lang="ur"] textarea,
+html[lang="ur"] button {
+  font-family: inherit;
+}
+
+[dir="rtl"] .rtl\:space-x-reverse > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-x-reverse: 1;
+}
+
+[dir="rtl"] .rtl\:flip {
+  transform: scaleX(-1);
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Sidebar thin scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 217 32.6% 17.5%;
+    --card: 0 0% 100%;
+    --card-foreground: 217 32.6% 17.5%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 217 32.6% 17.5%;
+    --primary: 217 91.2% 59.8%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 97.3%;
+    --secondary-foreground: 217 32.6% 17.5%;
+    --muted: 0 0% 96.3%;
+    --muted-foreground: 217 16.9% 48.6%;
+    --accent: 217 91.2% 59.8%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 93.3%;
+    --input: 0 0% 97.3%;
+    --ring: 217 91.2% 59.8%;
+    --chart-1: 217 91.2% 59.8%;
+    --chart-2: 217 70% 50%;
+    --chart-3: 217 60% 45%;
+    --chart-4: 217 80% 55%;
+    --chart-5: 217 75% 60%;
+    --radius: 0.5rem;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 217 32.6% 17.5%;
+    --sidebar-primary: 217 91.2% 59.8%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 97.3%;
+    --sidebar-accent-foreground: 217 32.6% 17.5%;
+    --sidebar-border: 0 0% 93.3%;
+    --sidebar-ring: 217 91.2% 59.8%;
+  }
+
+  /* ── تمكين HR — Apex ERP identity (SCOPED to HR routes via .theme-hr) ──
+     Applied by app/(erp)/(dashboard)/layout.tsx to HR routes only, so other
+     verticals (cashier/accounting/admin/…) keep the default tokens above.
+     The palette is the Apex ERP reference measured with getComputedStyle
+     (blue sidebar, green primary actions, red destructive). Components must
+     use the --apex-* variables (e.g. bg-[var(--apex-green)]) or the shadcn
+     tokens below — never literal hex. */
+  .theme-hr {
+    /* Apex ERP reference typeface (Noto Kufi Arabic) — the rest of the app
+       keeps IBM Plex Sans Arabic; only .theme-hr (the HR shell) switches. */
+    font-family: var(--font-kufi), var(--font-arabic), 'Noto Sans Arabic', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+    /* Apex geometry (2026-09-19, B5 pixel-parity pass) — Apex's dominant
+       border-radius is .25rem (4px); the shared shadcn default (.5rem/8px)
+       only applies here, not to the rest of the app. */
+    --radius: .25rem;
+    --apex-confirm-green: #00935d; /* SweetAlert2 swal2-confirm button */
+
+    /* Apex palette (hex, for arbitrary-value utilities) */
+    --apex-blue: #2960b6;          /* sidebar base, links */
+    --apex-blue-light: #2e71c8;    /* sidebar hover / lighter blue */
+    --apex-blue-accent: #4a7ad9;   /* blue accents, illustrations */
+    --apex-blue-deep: #1b3f7d;     /* pressed / deep blue */
+    --apex-navy: #2e3f66;          /* headings on light */
+    --apex-ink: #3a4a63;           /* illustration strokes, dark text */
+    --apex-text: #212529;          /* body text */
+    --apex-green: #2eaf7d;         /* primary action (اضافة / حفظ) */
+    --apex-green-dark: #279568;    /* primary hover */
+    --apex-success: #4caf50;       /* success accents */
+    --apex-red: #f95f5f;           /* destructive (اغلاق / حذف) */
+    --apex-red-dark: #e54a4a;      /* destructive hover */
+    --apex-slate: #6a7592;         /* secondary buttons (الاجراءات / الطباعة) */
+    --apex-thead: #bcc2d1;         /* table header */
+    --apex-row-group: #c0defa;     /* report group rows */
+    --apex-active: #bcdcf8;        /* active sidebar item */
+    --apex-border: #ced4da;        /* borders, dividers */
+    --apex-bg: #f4f5f7;            /* page background */
+
+    /* Added 2026-09-20 (Apex live-parity batch L1a — shared list components). */
+    --apex-disabled: #b6b6b6;      /* toolbar/table disabled text+border (اجراءات/حذف/تصدير) */
+    --apex-link: #00935d;          /* row-action pencil icons + name-link cells (R5-2 fix: neither L1a nor L1c actually declared this) */
+    --apex-canvas: #fbfbfb;        /* HR shell body/main background (R5-4/R5-2 fix: neither L1a nor L1c actually declared this) */
+
+    /* Added 2026-09-19 (HR devices/requests/settings token cleanup) — these hex
+       values were already in use but too far from any --apex-* above to reuse
+       without a visible shift, so they got their own token instead. */
+    --apex-green-text: #1e7e34;    /* success message text on tinted green cards (device register success, unmapped-link hover) */
+    --apex-red-text: #b02a2a;      /* error message text on tinted red cards (device form error) */
+    --apex-blue-hover: #2455a3;    /* hover shade for solid --apex-blue buttons (cancel-transactions page) */
+    --apex-blue-light-hover: #255ba3; /* hover shade for solid --apex-blue-light buttons (login submit) — distinct from --apex-blue-hover */
+    --apex-red-muted: #e9a3a3;     /* disabled-state background for red destructive buttons */
+    --apex-contact-blue: #2f7ee6;       /* subscription-page "تواصل معنا للتجديد" button — distinct shade from --apex-blue */
+    --apex-contact-blue-hover: #2a6fcc; /* hover for the above */
+    --apex-blue-border: #8fa6cc;   /* report-page.tsx toolbar button borders — distinct from --apex-border */
+    --apex-form-bar-bg: #f4f6f9;   /* apex-employee-form.tsx action-bar background — distinct from --apex-bg */
+
+    /* Added 2026-09-19 (hr-shell + dashboard design-polish pass) — same reasoning
+       as the block above: no existing --apex-* was within a few % of these. */
+    --apex-input-text: #495057;    /* rail/mobile-nav search input value text */
+    --apex-amber: #ffb62e;         /* "في الانتظار" (waiting) chart/status accent — no amber token existed */
+    --apex-neutral-fill: #9d9fa0;  /* muted neutral chart segment fill (holiday/weekly-off bars) */
+
+    /* Added 2026-09-19 (cleanup pass, hex→token) — hr-dashboard-public.tsx chart
+       colors, none within a few % of an existing --apex-* above. Mirrored
+       verbatim (same hex) in lib/apex-colors.ts for Recharts props. */
+    --apex-chart-present: #497cff;      /* "حاضر" (present) tile/legend/donut */
+    --apex-chart-absent: #dc3545;       /* "غائب" (absent) tile/legend/donut — duller than --apex-chart-absent-icon */
+    --apex-chart-leave: #34c75a;        /* "إجازة" (on leave) tile/legend/donut */
+    --apex-chart-tick: #64748b;         /* axis tick label fill (slate-500) */
+    --apex-chart-neutral-icon: #808080; /* عطلات رسمية / عطلة إسبوعية summary icon color */
+    --apex-chart-absent-icon: #ff0000;  /* الغياب summary icon color — brighter than --apex-chart-absent */
+    --apex-chart-panel-bg: #f1f2f4;     /* per-branch chart panel background */
+    --apex-chart-grid: #e2e8f0;         /* CartesianGrid stroke / empty-donut fill */
+    --apex-chart-axis-line: #cbd5e1;    /* chart axis line stroke */
+    --apex-chart-badge-bg: #dbeafe;     /* branch-initial badge background */
+    --apex-chart-badge-text: #2456a6;   /* branch-initial badge text */
+    --apex-chart-series-blue: #3b82f6;  /* movements bar series 1 */
+    --apex-chart-series-gray: #94a3b8;  /* movements bar series 2 */
+    --apex-chart-series-amber: #f59e0b; /* movements bar series 3 */
+
+    /* shadcn tokens re-pointed to the same palette (HSL triplets) */
+    --background: 220 16% 96%;       /* --apex-bg */
+    --foreground: 210 11% 15%;       /* --apex-text */
+    --card: 0 0% 100%;
+    --card-foreground: 210 11% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 11% 15%;
+    --primary: 157 58% 43%;          /* --apex-green */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 223 16% 49%;        /* --apex-slate */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 220 16% 96%;            /* --apex-bg */
+    --muted-foreground: 223 16% 49%; /* --apex-slate */
+    --accent: 208 81% 85%;           /* --apex-active */
+    --accent-foreground: 218 63% 44%;
+    --destructive: 0 93% 67%;        /* --apex-red */
+    --destructive-foreground: 0 0% 100%;
+    --success: 157 58% 43%;
+    --success-foreground: 0 0% 100%;
+    --warning: 43 89% 38%;
+    --warning-foreground: 0 0% 100%;
+    --info: 218 63% 44%;             /* --apex-blue */
+    --info-foreground: 0 0% 100%;
+    --border: 210 14% 83%;           /* --apex-border */
+    --input: 210 14% 83%;
+    --ring: 218 63% 44%;             /* --apex-blue focus ring */
+    --chart-1: 157 58% 43%;
+    --chart-2: 218 63% 44%;
+    --chart-3: 0 93% 67%;
+    --chart-4: 43 89% 45%;
+    --chart-5: 223 16% 49%;
+    --sidebar-background: 218 63% 44%;   /* --apex-blue */
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 208 81% 85%;      /* --apex-active */
+    --sidebar-primary-foreground: 210 11% 15%;
+    --sidebar-accent: 214 61% 48%;       /* --apex-blue-light */
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 214 61% 48%;
+    --sidebar-ring: 208 81% 85%;
+
+    /* ── Added 2026-09-20 (L1c Apex live-parity batch) — append-only block. ──
+       Do not reorder/edit tokens above this line (L1a is editing this file too).
+       --apex-canvas and --apex-link were NOT actually defined by either agent
+       (R5-2 audit) — now declared once, near --apex-disabled above. */
+    --apex-active-text: #80868d; /* sidebar active-item text (S3) */
+    --apex-bootstrap-blue: #007bff; /* subscription "تجديد/ترقية الإشتراك" buttons (5.26) */
+    --apex-grey-btn: #6c757d; /* confirm-dialog "إلغاء" button (test round 4 correction C) */
+    /* ── end L1c block ── */
+  }
+
+  /* ── Apex list/table rules (L1a shared components — components/hr/apex/*) ──
+     Applied via the `.apex-table` class on the `<table>` element rendered
+     inside `<ApexTableCard>`. Scoped to `.theme-hr` so it never leaks into
+     tables outside the HR shell. Uses only the --apex-* tokens above — no
+     literal hex. */
+  /* body{@apply bg-background} resolves --background (#f3f4f6-ish, shared with
+     --apex-bg for cards/muted elsewhere) — Apex's own body colour is the
+     dedicated --apex-canvas (#fbfbfb). Class selector beats the element rule
+     above without touching --background (final-round-1, R5-4). */
+  body.theme-hr { background-color: var(--apex-canvas); }
+
+  .theme-hr .apex-table { width: 100%; border-collapse: collapse; text-align: right; }
+  .theme-hr .apex-table thead tr { background: var(--apex-thead); height: 45px; }
+  .theme-hr .apex-table th {
+    font-size: 14px; font-weight: 700; color: var(--apex-text);
+    padding: 12px; text-align: start; white-space: nowrap;
+  }
+  .theme-hr .apex-table td {
+    font-size: 14px; font-weight: 400; color: var(--apex-text);
+    padding: 3.2px 12px 3.2px 3.2px; text-align: start;
+  }
+  .theme-hr .apex-table tbody tr { height: 47px; border-bottom: 1px solid var(--apex-bg); }
+  .theme-hr .apex-table tbody tr:hover { background: var(--apex-bg); }
+  .theme-hr .apex-table th:first-child,
+  .theme-hr .apex-table td:first-child { text-align: right; }
+  .theme-hr .apex-table th.apex-col-actions,
+  .theme-hr .apex-table td.apex-col-actions { text-align: center; }
+  .theme-hr .apex-table .apex-link { color: var(--apex-link); }
+  .theme-hr .apex-table .apex-icon-edit { color: var(--apex-link); }
+  .theme-hr .apex-table .apex-icon-delete { color: var(--apex-red); }
+  .theme-hr .apex-table .apex-icon-delete.is-disabled { color: rgba(0, 0, 0, .26); }
+  .theme-hr .apex-table .apex-icon-more { color: var(--apex-blue); }
+
+  /* ── Freelancer Workspace — deep Saudi-green identity (SCOPED via .theme-freelancer) ──
+     Applied by components/freelancer/freelancer-shell.tsx to the freelancer area ONLY,
+     so the ERP (which never mounts this class) stays visually unchanged. Mirrors the
+     .theme-hr pattern: it re-points the shadcn design tokens the shared components/ui/*
+     primitives read, so buttons/inputs/badges rendered inside the freelancer shell turn
+     green without any edit to those shared files. Light-only — .theme-hr has no dark
+     variant, so this matches it. To RETUNE THE GREEN, edit the --fl-* hex (HSL triplets)
+     in ONE place below; every token and component derives from them. */
+  .theme-freelancer {
+    /* === Saudi-green brand palette — EDIT THESE to retune the whole workspace === */
+    --fl-green:        152 69% 19%;   /* #0F5132 deep Saudi green — primary actions  */
+    --fl-green-hover:  153 70% 14%;   /* #0B3D26 darker hover                        */
+    --fl-green-light:  152 65% 29%;   /* #1A7A4E lighter green — accents/charts      */
+    --fl-green-tint:   147 30% 93%;   /* #E7F2EC very light green — subtle bg/badges */
+    --fl-green-fg:       0 0% 100%;   /* near-white text on green                    */
+
+    /* Map shadcn tokens (read by shared components/ui/* primitives) → green */
+    --primary: var(--fl-green);
+    --primary-foreground: var(--fl-green-fg);
+    --ring: var(--fl-green);
+    --accent: var(--fl-green-tint);
+    --accent-foreground: var(--fl-green);
+    --sidebar-primary: var(--fl-green);
+    --sidebar-primary-foreground: var(--fl-green-fg);
+    --sidebar-accent: var(--fl-green-tint);
+    --sidebar-accent-foreground: var(--fl-green);
+    --sidebar-ring: var(--fl-green);
+
+    /* Status tokens — kept distinct from brand green. :root does NOT define these, so
+       the freelancer surface defines them here for text-success / -warning / -info.
+       (Do NOT use these in the SHARED proposal components — they'd be undefined in the
+       plain ERP :root context.) */
+    --success: 152 65% 29%;           /* harmonious green, lighter than primary */
+    --success-foreground: 0 0% 100%;
+    --warning: 32 90% 44%;            /* amber */
+    --warning-foreground: 0 0% 100%;
+    --info: 206 56% 39%;              /* neutral blue */
+    --info-foreground: 0 0% 100%;
+
+    /* Chart series — green + gold family; follows the freelancer theme */
+    --chart-1: 152 60% 28%;           /* green — hero series   */
+    --chart-2: 40 78% 50%;            /* gold                  */
+    --chart-3: 32 90% 44%;            /* amber                 */
+    --chart-4: 152 40% 45%;           /* muted green           */
+    --chart-5: 206 45% 45%;           /* muted blue            */
+  }
+
+  /* ── لذعة (Laz'ah) — warm cream + brick-red identity (SCOPED via .theme-lazaa) ──
+     Applied to the sales-rep PWA + admin dashboard for the `lazaa` sales tenant ONLY
+     (clients.json `theme:"lazaa"` → /sales-brand → a guarded className in the sales
+     layout/page). Mirrors the .theme-hr / .theme-freelancer pattern: re-points the
+     shadcn design tokens the shared components/ui/* primitives read, so every
+     card/button/table/badge/dialog/input turns warm WITHOUT editing those shared files
+     — and Mandoob (never gets this class) renders byte-identically. To RETUNE THE WHOLE
+     BRAND, edit the --lz-* hex (HSL triplets) in ONE place below; every token derives
+     from them. Light-only (matches .theme-hr / .theme-freelancer). */
+  .theme-lazaa {
+    /* === Brand palette — EDIT THESE to retune all of Laz'ah === */
+    --lz-brick:        10 70% 32%;    /* #8A2B18 dark brick red — primary actions   */
+    --lz-brick-hover:  10 71% 25%;    /* #6E2213 darker hover                        */
+    --lz-brick-press:  10 70% 21%;    /* #5A1C10 pressed / gradient end              */
+    --lz-brick-wash:   15 48% 90%;    /* #F2E0DA faint brick wash — hovers/badges    */
+    --lz-cream:        37 74% 94%;    /* #FBF2E4 warm cream — page background        */
+    --lz-brown:        13 51% 19%;    /* #4A2318 dark warm brown — body text         */
+    --lz-espresso:     19 41% 12%;    /* #2B1A12 deep espresso — sidebar             */
+    --lz-tan:          39 42% 84%;    /* #E8DCC6 soft warm divider                   */
+    --lz-fg-on-brick:   0 0% 100%;    /* near-white text on brick                    */
+
+    /* Map shadcn tokens (read by shared components/ui/* primitives) → warm */
+    --background: var(--lz-cream);
+    --foreground: var(--lz-brown);
+    --card: 40 60% 99%;               /* #FFFDF9 warm-white surfaces on cream        */
+    --card-foreground: var(--lz-brown);
+    --popover: 40 60% 99%;
+    --popover-foreground: var(--lz-brown);
+    --primary: var(--lz-brick);
+    --primary-foreground: var(--lz-fg-on-brick);
+    --secondary: 39 61% 90%;          /* #F5EAD6 warm surface-2                      */
+    --secondary-foreground: var(--lz-brown);
+    --muted: 37 46% 89%;              /* #F0E6D6                                     */
+    --muted-foreground: 22 26% 38%;   /* #7A5A48 secondary text                      */
+    --accent: var(--lz-brick-wash);
+    --accent-foreground: var(--lz-brick);
+    --destructive: 0 72% 41%;         /* clear error red, kept distinct from brick   */
+    --destructive-foreground: 0 0% 100%;
+    --success: 147 46% 34%;           /* #2E7D52 warm-leaning green                  */
+    --success-foreground: 0 0% 100%;
+    --warning: 43 89% 38%;            /* #B8860B gold                                */
+    --warning-foreground: 0 0% 100%;
+    --info: 23 39% 39%;               /* warm brown — no blue                        */
+    --info-foreground: 0 0% 100%;
+    --border: var(--lz-tan);
+    --input: 35 40% 77%;              /* #DCC9AE stronger field border               */
+    --ring: var(--lz-brick);
+    /* Warm chart series — brick · gold · terracotta · olive · warm brown (no blue) */
+    --chart-1: 10 70% 40%;
+    --chart-2: 43 89% 38%;
+    --chart-3: 15 62% 47%;
+    --chart-4: 74 36% 35%;
+    --chart-5: 23 39% 39%;
+    /* Sidebar — deep espresso with brick accent (token-based sidebars) */
+    --sidebar-background: var(--lz-espresso);
+    --sidebar-foreground: 37 30% 88%;
+    --sidebar-primary: var(--lz-brick);
+    --sidebar-primary-foreground: var(--lz-fg-on-brick);
+    --sidebar-accent: 21 31% 18%;     /* #3D2A20 hover row on espresso               */
+    --sidebar-accent-foreground: 37 40% 92%;
+    --sidebar-border: 21 31% 18%;
+    --sidebar-ring: var(--lz-brick);
+  }
+
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ── تمكين HR — RTL table alignment (P2) ──
+   The shared shadcn <TableHead> defaults to physical `text-left`, which keeps
+   headers left-aligned even in RTL while data cells follow the start edge — the
+   "mixed LTR-header / RTL-data" bug. Re-align default-aligned headers/cells to
+   the logical start so Arabic tables line up. twMerge strips `text-left` when an
+   explicit alignment (e.g. an actions column's `text-right`) is set, so the
+   `.text-left` selector matches ONLY default cells — intentional overrides are
+   preserved. Unlayered so it beats Tailwind's layered utility; scoped to
+   `.theme-hr` so only HR routes are affected (other verticals untouched). */
+.theme-hr table th.text-left,
+.theme-hr table td.text-left {
+  text-align: start;
+}
+
+/* ── لذعة — recolour the sales apps' few HARDCODED (non-token) colours ──
+   The sales admin dashboard (app/(erp)/(dashboard)/sales-reps/page.tsx) and the PWA
+   bottom-nav paint some brand colours as literal Tailwind utilities (slate-900 sidebar,
+   violet/indigo brand tile, blue-600 buttons, #f4f5f7 page bg) that BYPASS the design
+   tokens above. Re-point just those, scoped to .theme-lazaa, so Mandoob (no class) keeps
+   its slate/violet/blue and only Laz'ah turns warm. Unlayered so it beats Tailwind's
+   layered utilities (same trick as the .theme-hr table rule above). */
+.theme-lazaa.bg-\[\#f4f5f7\] { background-color: hsl(var(--lz-cream)); }        /* dashboard page bg */
+.theme-lazaa .bg-slate-900 { background-color: hsl(var(--lz-espresso)); }       /* sidebar */
+.theme-lazaa .border-slate-800 { border-color: hsl(var(--sidebar-border)); }
+.theme-lazaa .bg-slate-700 { background-color: hsl(var(--sidebar-border)); }    /* collapse toggle */
+.theme-lazaa .border-slate-600 { border-color: hsl(var(--lz-brick)); }
+.theme-lazaa .hover\:bg-slate-600:hover { background-color: hsl(var(--lz-brick-hover)); }
+.theme-lazaa .text-slate-500,
+.theme-lazaa .text-slate-400 { color: hsl(37 22% 66%); }                        /* warm muted on espresso */
+.theme-lazaa .from-violet-500 {                                                 /* brand tile gradient → brick */
+  background-image: linear-gradient(to bottom right, hsl(var(--lz-brick)), hsl(var(--lz-brick-press)));
+}
+.theme-lazaa .border-violet-600 { border-color: hsl(var(--lz-brick)); }         /* spinner */
+.theme-lazaa .text-violet-600 { color: hsl(var(--lz-brick)); }
+.theme-lazaa .bg-blue-600 { background-color: hsl(var(--lz-brick)); }           /* buttons + PWA nav */
+.theme-lazaa .hover\:bg-blue-700:hover { background-color: hsl(var(--lz-brick-hover)); }
+.theme-lazaa .text-blue-600 { color: hsl(var(--lz-brick)); }
+.theme-lazaa .border-blue-600 { border-color: hsl(var(--lz-brick)); }
+/* Naskh headings — classic calligraphic feel echoing the لذعة logo */
+.theme-lazaa h1, .theme-lazaa h2, .theme-lazaa h3 {
+  font-family: var(--font-naskh), var(--font-arabic), 'Noto Naskh Arabic', serif;
+}
+
+/* لذعة login screen (components/login-page.tsx) — the shared login uses hardcoded blues.
+   Button + hover are already recoloured by the .bg-blue-600 / hover rules above; here we
+   also warm the (desktop) gradient panel, the active/focus states and the panel bg. All
+   scoped to .theme-lazaa, so Mandoob's login stays exactly blue. */
+.theme-lazaa .from-blue-700 {   /* immersive left brand panel gradient → brick */
+  background-image: linear-gradient(to bottom right, hsl(var(--lz-brick)), hsl(var(--lz-brick-press))) !important;
+}
+.theme-lazaa .bg-blue-500\/20 { background-color: hsl(var(--lz-brick) / 0.2); }   /* panel glow */
+.theme-lazaa .active\:bg-blue-800:active { background-color: hsl(var(--lz-brick-press)); }
+.theme-lazaa .focus\:border-blue-400:focus { border-color: hsl(var(--lz-brick)); }
+.theme-lazaa .focus\:ring-blue-500\/20:focus { --tw-ring-color: hsl(var(--lz-brick) / 0.2); }
+.theme-lazaa .bg-slate-50\/80 { background-color: hsl(var(--lz-cream) / 0.8); }   /* warm the form panel */
+
+/* ── لذعة — broad blue/indigo → brick sweep ──
+   The 13 rep-PWA pages + dashboard components paint assorted brand accents as hardcoded
+   blue/indigo utilities (home-header gradient, primary CTAs, active tabs, links, badges)
+   beyond the specific ones handled above. Remap the whole blue/indigo family to brick
+   within .theme-lazaa so the app is cohesively warm ("no blues"). !important beats the
+   layered utilities; scoped to .theme-lazaa so Mandoob & every other tenant stay blue.
+   (Semantic greens/oranges for success/samples are intentionally left as-is.) */
+.theme-lazaa .bg-blue-500, .theme-lazaa .bg-blue-600, .theme-lazaa .bg-blue-700,
+.theme-lazaa .bg-indigo-600, .theme-lazaa .bg-indigo-700 { background-color: hsl(var(--lz-brick)) !important; }
+.theme-lazaa .hover\:bg-blue-600:hover, .theme-lazaa .hover\:bg-blue-700:hover,
+.theme-lazaa .hover\:bg-blue-800:hover { background-color: hsl(var(--lz-brick-hover)) !important; }
+.theme-lazaa .text-blue-500, .theme-lazaa .text-blue-600, .theme-lazaa .text-blue-700,
+.theme-lazaa .text-indigo-600 { color: hsl(var(--lz-brick)) !important; }
+.theme-lazaa .border-blue-400, .theme-lazaa .border-blue-500, .theme-lazaa .border-blue-600 { border-color: hsl(var(--lz-brick)) !important; }
+.theme-lazaa .ring-blue-500, .theme-lazaa .ring-blue-600 { --tw-ring-color: hsl(var(--lz-brick)) !important; }
+.theme-lazaa .from-blue-500, .theme-lazaa .from-blue-600, .theme-lazaa .from-blue-700,
+.theme-lazaa .from-indigo-600, .theme-lazaa .from-indigo-700 {
+  background-image: linear-gradient(to bottom right, hsl(var(--lz-brick)), hsl(var(--lz-brick-press))) !important;
+}
+
+/* ── تمكين HR — print (GenericListPage «الطباعة», ReportPage «تصدير ← طباعة») ──
+   Both call window.print() directly on the live app screen — without this, a
+   print includes the full-height sidebar (components/hr-shell/icon-rail.tsx,
+   the shell's only <aside>) and the topbar (components/hr-shell/topbar.tsx,
+   the shell's only <header>), clipped to whatever fit the screen's fixed
+   h-screen/overflow-hidden box. Both components are owned by another agent,
+   so they're hidden from here instead of edited directly: the shell's root
+   (.theme-hr, in components/hr-shell/shell.tsx) is the only class available
+   to scope through. The pages' own toolbars/filters/pagination carry
+   `print:hidden` (Tailwind's built-in print variant) and render a dedicated
+   print-only table (`hidden print:block`) alongside, so only that table (or
+   the report's results table) is left once these are hidden too. */
+@media print {
+  .theme-hr > aside,
+  .theme-hr header {
+    display: none !important;
+  }
+  /* Collapse the shell's fixed h-screen/flex column chrome so a long printed
+     table isn't clipped to one screen's worth of rows. */
+  .theme-hr,
+  .theme-hr > div,
+  .theme-hr main {
+    display: block !important;
+    height: auto !important;
+  }
+  .theme-hr .overflow-hidden,
+  .theme-hr .overflow-y-auto {
+    overflow: visible !important;
+  }
+  body {
+    background: #fff !important;
+  }
+}
+
+/* ── تمكين HR — Apex dialog geometry (B5 pixel-parity pass, 2026-09-19) ──
+   Apex's MatDialog: container radius 10px, padding 25px (`.modalContainer`),
+   width 50% for list dialogs / 30% for small ones, min-width 310px,
+   max-height 80vh. Scoped through `[role="dialog"]` (Radix sets that role on
+   DialogPrimitive.Content) rather than editing components/ui/dialog.tsx (a
+   shared shadcn file every other vertical also uses).
+   CAVEAT: Radix portals DialogContent to `document.body` by default, which is
+   NOT a descendant of the `.theme-hr` wrapper div (that lives deep inside the
+   HR shell / login screen, not on <body>) — so the `.theme-hr [role="dialog"]`
+   form only matches when the dialog happens to render without a portal. The
+   compound form `[role="dialog"].theme-hr` (class applied directly on the
+   dialog's own content, as hr-dashboard-public.tsx's category drill-down
+   dialog does) always matches regardless of portal target — new HR dialogs
+   should add `theme-hr` to their own `DialogContent` className for this
+   reason until the shared primitive grows a scoped portal container. */
+.theme-hr [role="dialog"],
+[role="dialog"].theme-hr {
+  border-radius: 10px;
+  padding: 25px;
+}
+.theme-hr [role="dialog"].hr-dialog-lg,
+[role="dialog"].theme-hr.hr-dialog-lg {
+  width: 50%;
+  max-width: none;
+  min-width: 310px;
+  max-height: 80vh;
+}
+.theme-hr [role="dialog"].hr-dialog-sm,
+[role="dialog"].theme-hr.hr-dialog-sm {
+  width: 30%;
+  max-width: none;
+  min-width: 310px;
+  max-height: 80vh;
+}
+
+/* ── تمكين HR — Apex confirm dialogs ──
+   Updated 2026-09-20 (test round 4, correction C — supersedes the earlier
+   SweetAlert2/20em measurement below): the delete-confirm dialog is a 30%-
+   width MatDialog, centered title, red «حذف» 133×42 (--apex-red) + grey
+   «إلغاء» (--apex-grey-btn, #6c757d) — not a green SweetAlert2 popup. Now
+   that `.theme-hr` is toggled on <body> (components/hr-shell/shell.tsx), the
+   plain `.theme-hr [role="alertdialog"]` form reliably matches the portalled
+   content too — the compound `[role="alertdialog"].theme-hr` form is kept
+   only because ApexDialog/ConfirmDialog callers may still stamp it directly. */
+.theme-hr [role="alertdialog"],
+[role="alertdialog"].theme-hr {
+  width: 30%;
+  max-width: none;
+  min-width: 310px;
+}
+.theme-hr [role="alertdialog"] [class*="AlertDialogTitle"],
+.theme-hr [role="alertdialog"] h2,
+[role="alertdialog"].theme-hr h2 {
+  text-align: center;
+}
+.theme-hr [role="alertdialog"] button,
+[role="alertdialog"].theme-hr button,
+.theme-hr [role="alertdialog"] [class*="text-sm"],
+[role="alertdialog"].theme-hr [class*="text-sm"] {
+  font-size: 13px;
+}
+/* «إلغاء» — every AlertDialogCancel in the codebase uses the outline variant
+   (`border-input`); «حذف» is targeted via the destructive-variant's own
+   `bg-destructive` marker class (components/ui/button.tsx) so a non-destructive
+   ConfirmDialog (variant="default", confirm button NOT red) is left alone. */
+.theme-hr [role="alertdialog"] button[class*="border-input"],
+[role="alertdialog"].theme-hr button[class*="border-input"] {
+  background-color: var(--apex-grey-btn) !important;
+  border-color: var(--apex-grey-btn) !important;
+  color: #fff !important;
+}
+.theme-hr [role="alertdialog"] button[class*="bg-destructive"],
+[role="alertdialog"].theme-hr button[class*="bg-destructive"] {
+  width: 133px;
+  height: 42px;
+  background-color: var(--apex-red) !important;
+  color: #fff !important;
+}
+
+/* ── تمكين HR — Apex tooltip colour (`.tooltip-inner{background:#2960b6}`) ──
+   Radix TooltipContent (components/ui/tooltip.tsx, shared — not edited here)
+   has no distinguishing role/data-attribute; `px-3 py-1.5` combined with
+   `text-popover-foreground` is unique to it among this codebase's popover/
+   menu/select/command content roots (checked 2026-09-19 — they all use `p-1`
+   or `p-4` instead), so it's a safe, non-shared-file way to target only the
+   tooltip bubble. Same portal caveat as dialogs above. */
+.theme-hr [class*="text-popover-foreground"][class*="py-1.5"] {
+  background-color: #2960b6;
+  color: #fff;
+  border-color: #2960b6;
+}
+
+/* ── تمكين HR — sonner toast, Apex mat-snack-bar parity ──
+   position="top-center" + duration are set where the Toaster/toast() calls
+   are made (app/(erp)/layout.tsx, components/hr-shell/real-login-form.tsx);
+   this only styles the success toast green/white like Apex's
+   `mat-snack-bar-success`. The Toaster is mounted with `className="theme-hr"`
+   directly on its own root (data-sonner-toaster), so — unlike the dialog/
+   tooltip cases above — this one is NOT subject to the portal-ancestry
+   caveat: the class sits on the exact element being styled. */
+[data-sonner-toaster].theme-hr [data-sonner-toast][data-type="success"] {
+  background: var(--apex-green) !important;
+  color: #fff !important;
+  border-color: var(--apex-green) !important;
+}
+[data-sonner-toaster].theme-hr [data-sonner-toast][data-type="success"] [data-description] {
+  color: #fff !important;
+}
+
+/* ── تمكين HR — Radix toast → Apex Bootstrap `.alert` parity ──
+   Added 2026-09-20 (test round 4, correction B — supersedes an earlier
+   green-snackbar idea for this same toaster). Apex's own feedback control is
+   a fixed Bootstrap `.alert`, not a corner snackbar: top 30px, 50% width,
+   centered, success bg #d4edda/#155724, error (destructive) bg #f8d7da/
+   #721c24, radius 4, 14px Kufi, × at the LEFT. `.apex-toast`/`.apex-toast-
+   viewport` are static class hooks added in components/ui/toast.tsx —
+   unstyled outside `.theme-hr`, so every other vertical's toast/snackbar is
+   untouched. This now works reliably because `.theme-hr` is toggled on
+   <body> (components/hr-shell/shell.tsx) and the toast is portaled there.
+   Auto-dismiss duration (4500ms in HR, unchanged elsewhere) is set in
+   hooks/use-toast.ts by checking document.body's class when toast() fires. */
+.theme-hr .apex-toast-viewport {
+  top: 30px;
+  bottom: auto;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: 50%;
+  max-width: none;
+  padding: 0;
+  align-items: center;
+}
+.theme-hr .apex-toast {
+  width: 100%;
+  max-width: none;
+  border-radius: 4px;
+  border: 1px solid #c3e6cb;
+  box-shadow: none;
+  font-family: var(--font-kufi), var(--font-arabic), 'Noto Sans Arabic', sans-serif;
+  font-size: 14px;
+  background-color: #d4edda !important;
+  color: #155724 !important;
+  padding: 12px 16px 12px 40px;
+}
+.theme-hr .apex-toast.destructive {
+  border-color: #f5c6cb;
+  background-color: #f8d7da !important;
+  color: #721c24 !important;
+}
+.theme-hr .apex-toast [toast-close] {
+  left: 8px;
+  right: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  color: inherit;
+  opacity: .55;
+}
+.theme-hr .apex-toast [toast-close]:hover {
+  color: inherit;
+  opacity: 1;
+}
+/* ── Masar Time palette (2026-10-05) ──────────────────────────────────────
+   This copy (masar-frontend) re-skins the same HR shell: dark-teal sidebar
+   and topbar, light grey canvas, green / teal / orange status colours. It
+   overrides the Apex tokens above, so every page follows without per-page
+   edits. Masar-only — tamken3 keeps its own globals.css. */
+.theme-hr, body.theme-hr {
+  --masar-ink: #1d4d56;          /* sidebar / topbar */
+  --masar-ink-2: #245c66;        /* topbar, hovers */
+  --masar-ink-3: #2f7480;        /* active item */
+  --masar-green: #6cc196;        /* present */
+  --masar-teal: #2c9c9a;         /* registered / leave */
+  --masar-orange: #f0ae4f;       /* absent / other */
+  --apex-blue: var(--masar-ink);
+  --apex-blue-light: var(--masar-ink-2);
+  --apex-blue-accent: var(--masar-teal);
+  --apex-blue-deep: #163c43;
+  --apex-blue-hover: #1a454d;
+  --apex-blue-light-hover: #1f525b;
+  --apex-blue-border: #9cbcc0;
+  --apex-navy: #1d4d56;
+  --apex-active: var(--masar-ink-3);
+  --apex-active-text: #ffffff;
+  --apex-green: #2c9c9a;
+  --apex-green-dark: #24817f;
+  --apex-link: #24817f;
+  --apex-thead: #d6e4e6;
+  --apex-row-group: #cfe5e2;
+  --apex-canvas: #edf1f2;
+  --apex-bg: #edf1f2;
+  --apex-form-bar-bg: #eef3f4;
+  --apex-chart-present: #6cc196;
+  --apex-chart-absent: #f0ae4f;
+  --apex-chart-leave: #2c9c9a;
+  --apex-chart-panel-bg: #f3f6f7;
+  --apex-chart-badge-bg: #d9eeec;
+  --apex-chart-badge-text: #1d4d56;
+  --apex-amber: #f0ae4f;
+}
+
+/* Per-client desktop zoom on wide screens only (narrower ones would cramp the
+   two-column dashboard). Set via site_config tenant_brand.uiScale on <html> in
+   app/layout.tsx. CSS zoom also scales viewport-height boxes, so the shell's
+   full-height containers are divided back by the factor to still fit the screen. */
+@media (min-width: 1536px) {
+  html[data-ui-scale] { zoom: var(--ui-scale); }
+  html[data-ui-scale] .h-screen,
+  html[data-ui-scale] .h-\[100dvh\] { height: calc(100dvh / var(--ui-scale)); }
+  html[data-ui-scale] .min-h-screen { min-height: calc(100dvh / var(--ui-scale)); }
+  html[data-ui-scale] .max-h-screen { max-height: calc(100dvh / var(--ui-scale)); }
+  html[data-ui-scale] .max-h-\[calc\(100vh-2rem\)\] { max-height: calc(100dvh / var(--ui-scale) - 2rem); }
+  html[data-ui-scale] .lg\:max-h-\[calc\(100vh-7rem\)\] { max-height: calc(100dvh / var(--ui-scale) - 7rem); }
+}

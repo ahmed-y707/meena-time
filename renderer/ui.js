@@ -1,3 +1,4 @@
+const TOOL_LABEL = { new: 'اضافة', print: 'الطباعة', del: 'حذف' }
 // Apex Time permissions: a screen key is "<menu>/<item>"; the user's role grants per screen
 // view (menu entry) · add · del · edit · print. A window opened from a menu item remembers
 // its key and disables the toolbar buttons the role doesn't allow.
@@ -20,10 +21,11 @@ const Perm = {
   },
 }
 
-// Tiny window manager + dialogs reproducing Apex Time's MDI desktop.
+// Pages + dialogs in msar-erp.com's shell. A «window» is a page in the main column: one shows at
+// a time. A page opened from another page (a shift's times, an employee's form) stacks on it and
+// comes back to it when closed; the sidebar leaves them all (see Nav in app.js).
 const UI = {
   wins: new Map(),
-  z: 10,
 
   el(html) {
     const t = document.createElement('template')
@@ -34,102 +36,131 @@ const UI = {
     return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
   },
 
-  // Open (or focus) a child window. `render(body, win)` fills it.
-  openWindow(id, title, { width = 560, height = 340 } = {}, render) {
+  // Open (or show) a page. `render(body, win)` fills it. `width`: how wide its form may grow (lists use the full width)
+  openWindow(id, title, { width = 560 } = {}, render) {
     if (this.wins.has(id)) return this.focus(id)
     const desk = document.getElementById('desktop')
-    const n = this.wins.size
+    const nested = this.wins.size > 0
+    const crumbs = [window.Nav?.section, nested ? this.wins.get(this.active)?.title : null].filter(Boolean)
     const win = this.el(`
-      <section class="win" data-win="${this.esc(id)}" style="width:${width}px;height:${height}px;left:${Math.max(4, (innerWidth - width) / 2 + n * 24)}px;top:${Math.max(62, (innerHeight + 58 - height) / 2 + n * 24)}px">
-        <div class="cap"><button class="x" title="إغلاق">✕</button>${this.esc(title)}</div>
-        <div class="body" style="flex:1;display:flex;flex-direction:column;min-height:0"></div>
+      <section class="win hr-page-enter" data-win="${this.esc(id)}" style="--page-w:${width >= 1000 ? 'none' : `${Math.round(width * 1.25)}px`}">
+        <div class="page-head">
+          <div class="crumbs">${crumbs.map((c) => `<span>${this.esc(c)}</span><i>/</i>`).join('')}<span class="cap">${this.esc(title)}</span></div>
+          <button class="x" title="رجوع" ${nested ? '' : 'hidden'}>${ICONS.close}</button>
+        </div>
+        <div class="body"></div>
       </section>`)
     desk.appendChild(win)
     win.querySelector('.x').onclick = () => this.close(id)
-    win.addEventListener('mousedown', () => this.focus(id))
-    this.drag(win, win.querySelector('.cap'))
     const permKey = Perm.scope
     this.wins.set(id, { win, title, permKey })
     this.focus(id)
-    this.renderStrip()
-    // onClose(fn): fn() → false keeps the window open (e.g. «unsaved changes» answered with إلغاء)
+    // onClose(fn): fn() → false keeps the page open (e.g. «unsaved changes» answered with إلغاء)
     render(win.querySelector('.body'), { close: () => this.close(id), permKey, onClose: (fn) => { this.wins.get(id).guard = fn } })
     Perm.apply(win, permKey)
   },
   focus(id) {
-    const w = this.wins.get(id)
-    if (!w) return
-    w.win.style.zIndex = ++this.z
+    if (!this.wins.get(id)) return
     this.active = id
-    // Apex (MDI): only the active window shows; switching hides the others
     for (const [k, o] of this.wins) o.win.style.display = k === id ? '' : 'none'
     this.renderStrip()
   },
+  // → false when its «unsaved changes» question kept it open
   async close(id) {
     const w = this.wins.get(id)
-    if (!w || w.closing) return
+    if (!w || w.closing) return false
     if (w.guard) {
       w.closing = true
       const ok = await w.guard().catch(() => true)
       w.closing = false
-      if (!ok) return
+      if (!ok) return false
     }
     w.win.remove()
     this.wins.delete(id)
     if (this.active === id) {
       const next = [...this.wins.keys()].pop()
-      if (next) return this.focus(next)
+      if (next) { this.focus(next); return true }
       this.active = undefined
     }
     this.renderStrip()
+    return true
   },
+  // the dashboard shows while no page is open
   renderStrip() {
-    // Apex hides its home screen while any window is open
     const home = document.getElementById('home')
-    if (home) home.style.visibility = this.wins.size ? 'hidden' : ''
-    const strip = document.getElementById('taskstrip')
-    strip.innerHTML = ''
-    for (const [id, w] of this.wins) {
-      const b = this.el(`<button class="${id === this.active ? 'active' : ''}">${this.esc(w.title)}</button>`)
-      b.onclick = () => this.focus(id)
-      strip.appendChild(b)
-    }
-    // Apex's MDI ✕ at the far end of the strip closes the active window
-    if (this.wins.size) {
-      const x = this.el('<button class="strip-x" title="إغلاق">✕</button>')
-      x.onclick = () => this.close(this.active)
-      strip.appendChild(x)
-    }
-  },
-  drag(win, handle) {
-    handle.addEventListener('mousedown', (e) => {
-      if (e.target.closest('button')) return
-      const sx = e.clientX, sy = e.clientY, ox = win.offsetLeft, oy = win.offsetTop
-      const move = (ev) => { win.style.left = ox + ev.clientX - sx + 'px'; win.style.top = Math.max(46, oy + ev.clientY - sy) + 'px' }
-      const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up) }
-      addEventListener('mousemove', move)
-      addEventListener('mouseup', up)
-    })
+    if (home) home.style.display = this.wins.size ? 'none' : ''
+    if (!this.wins.size) window.Nav?.mark(null)
   },
 
-  // Toolbar button row — `buttons` = [{key, label, icon, onClick}]
+  // Toolbar (components/hr/apex/toolbar.tsx) — `buttons` = [{key, label, icon, onClick}]
   toolbar(buttons) {
     const bar = this.el('<div class="toolbar"></div>')
     for (const b of buttons) {
-      const btn = this.el(`<button data-key="${b.key}">${ICONS[b.icon] || ''}<span>${this.esc(b.label)}</span></button>`)
+      const btn = this.el(`<button data-key="${b.key}">${ICONS[b.icon] || ''}<span>${this.esc(TOOL_LABEL[b.key] || b.label)}</span></button>`)
       btn.onclick = b.onClick
       bar.appendChild(btn)
     }
     return bar
   },
+  // the table's search box + «تصدير ▾» (components/hr/apex/toolbar.tsx, export-menu.tsx)
+  searchBox(placeholder, onInput) {
+    const box = this.el(`<div class="tb-search"><input type="text" placeholder="${this.esc(placeholder)}" aria-label="${this.esc(placeholder)}">${ICONS.search}</div>`)
+    box.querySelector('input').addEventListener('input', (e) => onInput(e.target.value.trim()))
+    return box
+  },
+  exportMenu(title, table) {
+    const box = this.el(`<div class="tb-menu"><button type="button" class="tb-btn" data-key="print">${ic('chevron-down')}<span>تصدير</span></button><div class="tb-drop" hidden>
+      <button type="button" data-x="excel">${ICONS.excel}<span>Excel</span></button><button type="button" data-x="pdf">${ICONS.pdf}<span>PDF</span></button><button type="button" data-x="print">${ICONS.print}<span>طباعة</span></button></div></div>`)
+    const drop = box.querySelector('.tb-drop')
+    box.querySelector('.tb-btn').onclick = () => { drop.hidden = !drop.hidden }
+    document.addEventListener('mousedown', (e) => { if (!box.contains(e.target)) drop.hidden = true })
+    drop.onclick = async (e) => {
+      const x = e.target.closest('[data-x]')?.dataset.x
+      if (!x) return
+      drop.hidden = true
+      const inner = this.gridDoc(title, table())
+      if (!inner) return this.message('لا توجد بيانات')
+      if (x === 'print') return this.print(inner, title)
+      const file = `${title} ${Engine.today()}`
+      if (x === 'pdf') { const r = await window.bridge.savePdf(`${file}.pdf`, this.docHtml(inner)); if (r?.ok) this.message(`تم الحفظ: ${r.path}`); else if (r?.error) this.message(r.error); return }
+      const wb = XLSX.utils.book_new(), ws = XLSX.utils.table_to_sheet(this.el(inner.match(/<table[\s\S]*<\/table>/)[0]), { raw: true })
+      ws['!RTL'] = true
+      XLSX.utils.book_append_sheet(wb, ws, title.replace(/[\\/?*[\]:]/g, ' ').slice(0, 28))
+      wb.Workbook = { Views: [{ RTL: true }] }
+      const r = await window.bridge.saveFile(`${file}.xlsx`, XLSX.write(wb, { bookType: 'xlsx', type: 'array' }), 'xlsx')
+      if (r?.ok) this.message(`تم الحفظ: ${r.path}`)
+    }
+    return box
+  },
+  // the magnifier + «لا يوجد نتائج…» of components/hr/apex-empty-state.tsx
+  emptyState(text = 'لا يوجد نتائج للبحث ابحث مرة اخري') {
+    return `<div class="apex-empty"><svg viewBox="0 0 300 300" fill="none" aria-hidden="true"><g stroke="#3a4a63" stroke-width="9" stroke-linecap="round"><line x1="60" y1="70" x2="78" y2="86"/><line x1="150" y1="40" x2="150" y2="62"/><line x1="240" y1="70" x2="222" y2="86"/><line x1="42" y1="150" x2="64" y2="150"/><line x1="258" y1="150" x2="236" y2="150"/><line x1="60" y1="230" x2="78" y2="214"/></g><circle cx="150" cy="150" r="64" fill="#fff" stroke="#3a4a63" stroke-width="11"/><circle cx="150" cy="150" r="42" fill="#fff" stroke="#bfe0f2" stroke-width="11"/><path d="M120 128 A36 36 0 0 1 150 114" stroke="#bfe0f2" stroke-width="9" stroke-linecap="round" fill="none"/><path d="M196 196 L252 252" stroke="#3a4a63" stroke-width="22" stroke-linecap="round"/><path d="M100 30 l8 -18 l8 18 l18 8 l-18 8 l-8 18 l-8 -18 l-18 -8 z" fill="#d6ecc6"/><path d="M212 262 l7 -15 l7 15 l15 7 l-15 7 l-7 15 l-7 -15 l-15 -7 z" fill="#d6ecc6"/></svg><p>${this.esc(text)}</p></div>`
+  },
+  // page buttons (components/hr/apex/pagination.tsx): onPage(n) / onSize(n)
+  pagination({ page, pageCount, pageSize, sizes = [5, 10, 25, 50, 100], onPage, onSize }) {
+    const nums = []
+    const from = Math.max(1, page - 2), to = Math.min(pageCount, from + 4)
+    if (from > 1) { nums.push(1); if (from > 2) nums.push('…') }
+    for (let i = from; i <= to; i++) nums.push(i)
+    if (to < pageCount) { if (to < pageCount - 1) nums.push('…'); nums.push(pageCount) }
+    const el = this.el(`<div class="apex-pages"><div class="rows"><span>عدد الصفوف</span><select aria-label="عدد الصفوف">${sizes.map((n) => `<option ${n === pageSize ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="nums"><button data-p="1" ${page <= 1 ? 'disabled' : ''} aria-label="الصفحة الأولى">${ic('chevrons-right')}</button><button data-p="${page - 1}" ${page <= 1 ? 'disabled' : ''} aria-label="الصفحة السابقة">${ic('chevron-right')}</button>
+      ${nums.map((n) => (n === '…' ? '<span>…</span>' : `<button data-p="${n}" class="${n === page ? 'on' : ''}">${n}</button>`)).join('')}
+      <button data-p="${page + 1}" ${page >= pageCount ? 'disabled' : ''} aria-label="الصفحة التالية">${ic('chevron-left')}</button><button data-p="${pageCount}" ${page >= pageCount ? 'disabled' : ''} aria-label="الصفحة الأخيرة">${ic('chevrons-left')}</button></div></div>`)
+    el.querySelector('select').addEventListener('change', (e) => onSize(+e.target.value))
+    el.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => onPage(+b.dataset.p)))
+    return el
+  },
 
-  // Modal dialog in Apex's style; resolves when closed.
+  // Modal dialog (components/hr/apex/dialog.tsx): ✕ at the top-left, bold centred title; resolves when closed.
+  // x: show the ✕ (closes with null); size: 'lg' = two columns of fields
   // hideBehind: the active window hides while the dialog is open (one thing on screen at a time)
-  dialog({ winbar, head, bodyHtml, buttons, width = 440, onOpen = null, foot = '', msg = false, btnsLeft = false, hideBehind = false, cls = '' }) {
+  dialog({ winbar, head, bodyHtml, buttons, width = 440, onOpen = null, foot = '', msg = false, btnsLeft = false, hideBehind = false, cls = '', x = false }) {
     return new Promise((resolve) => {
       const back = this.el(`
         <div class="dlg-backdrop"><div class="dlg${msg ? ' msg' : ''}${btnsLeft ? ' btns-left' : ''}${cls ? ` ${cls}` : ''}" style="width:${width}px">
           ${winbar || msg ? `<div class="winbar">${this.esc(winbar || head)}</div>` : ''}
+          ${x ? `<button type="button" class="dlg-x" aria-label="اغلاق">${ICONS.close}</button>` : ''}
           ${msg ? '' : `<div class="head">${this.esc(head)}</div>`}
           <div class="body">${bodyHtml}</div>
           <div class="err"></div>
@@ -140,8 +171,9 @@ const UI = {
       if (behind) behind.style.visibility = 'hidden'
       const done = (v) => { back.remove(); if (behind) behind.style.visibility = ''; resolve(v) }
       const api = { root: back, error: (m) => (back.querySelector('.err').textContent = m || ''), close: done }
+      if (x) { back.querySelector('.dlg-x').onclick = () => done(null); back.addEventListener('keydown', (e) => { if (e.key === 'Escape') done(null) }) }
       for (const b of buttons) {
-        const btn = this.el(`<button>${ICONS[b.icon] || ''}<span>${this.esc(b.label)}</span></button>`)
+        const btn = this.el(`<button class="${['cancel', 'close'].includes(b.icon) ? 'sec' : 'pri'}">${ICONS[b.icon] || ''}<span>${this.esc(b.label)}</span></button>`)
         btn.onclick = () => b.onClick(api)
         back.querySelector('.btns').appendChild(btn)
       }
@@ -178,12 +210,12 @@ const UI = {
   docHtml(inner) {
     const css = [...document.styleSheets].map((ss) => { try { return [...ss.cssRules].map((r) => r.cssText).join('\n') } catch { return '' } }).join('\n')
     return `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><style>${css}</style></head>
-      <body class="printing pdf"><div id="print-area" style="display:block">${inner}</div></body></html>`
+      <body class="theme-hr printing pdf"><div id="print-area" style="display:block">${inner}</div></body></html>`
   },
   // yyyy-mm-dd → yyyy/mm/dd in the visible text of a report (attributes keep the ISO dates)
   slashDates(html) { return html.replace(/>([^<]+)</g, (m, t) => '>' + t.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$1/$2/$3') + '<') },
   // print; when it can't (no printer…) offer the same document as a PDF file instead
-  async print(inner, title = 'Meena Time') {
+  async print(inner, title = 'Masar Time') {
     if (window.bridge.printHtml) {
       const res = await window.bridge.printHtml(this.docHtml(inner))
       if (!res?.error) return
@@ -203,20 +235,18 @@ const UI = {
     document.body.classList.remove('printing')
   },
 
-  // Print what a list window shows: its grid as a report table under the letterhead
-  printGrid(title, root) {
-    const t = root.querySelector('table.grid')?.cloneNode(true)
-    if (!t) return
+  // a list's table (without its action column) as a report under the letterhead; null when empty
+  gridDoc(title, table) {
+    const t = table?.cloneNode(true)
+    if (!t) return null
     t.className = 'rep'
-    t.querySelectorAll('tr.new').forEach((tr) => tr.remove()) // the blank entry row
-    t.querySelectorAll('select').forEach((x) => x.replaceWith(x.selectedIndex > 0 ? x.options[x.selectedIndex].text : ''))
-    t.querySelectorAll('input[type=checkbox]').forEach((x) => x.replaceWith(x.checked ? '✓' : ''))
-    t.querySelectorAll('input').forEach((x) => x.replaceWith(x.value))
-    // drop the row-pointer column (empty header)
-    const first = t.querySelector('thead th')
-    if (first && !first.textContent.trim()) t.querySelectorAll('tr').forEach((tr) => tr.firstElementChild?.remove())
-    if (!t.querySelector('tbody tr')) return this.message('لا توجد بيانات للطباعة')
-    return this.print(this.letterhead(title) + this.slashDates(t.outerHTML) + this.reportFoot(), title)
+    t.querySelectorAll('.apex-col-actions').forEach((c) => c.remove())
+    if (!t.querySelector('tbody tr td:not(.empty)')) return null
+    return this.letterhead(title) + this.slashDates(t.outerHTML) + this.reportFoot()
+  },
+  printGrid(title, root) {
+    const doc = this.gridDoc(title, root.querySelector('table'))
+    return doc ? this.print(doc, title) : this.message('لا توجد بيانات للطباعة')
   },
 
   // Our own drop-down list for <select>: the native popup doesn't open reliably

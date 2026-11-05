@@ -17,6 +17,14 @@ contextBridge.exposeInMainWorld('bridge', {
   register: (code) => ipcRenderer.invoke('licence:register', code),
   readDevice: (dev) => ipcRenderer.invoke('device:read', dev),
   pingDevice: (dev) => ipcRenderer.invoke('device:ping', dev),
+  deviceClock: (dev) => ipcRenderer.invoke('device:clock', dev),
+  // live punches pushed by devices on the network (ADMS)
+  gateDrain: (max) => ipcRenderer.invoke('gate:drain', max),
+  gateAck: (next) => ipcRenderer.invoke('gate:ack', next),
+  gateStatus: () => ipcRenderer.invoke('gate:status'),
+  gateClock: (sn) => ipcRenderer.invoke('gate:clock', sn),
+  gateSettings: (patch) => ipcRenderer.invoke('gate:settings', patch),
+  onGate: (cb) => ipcRenderer.on('gate:new', () => cb()),
   transferDevice: (req, onProgress) => {
     const h = (_e, p) => onProgress?.(p)
     ipcRenderer.on('device:transfer-progress', h)

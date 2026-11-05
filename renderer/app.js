@@ -1,154 +1,269 @@
-// Login → home (4 tiles + trial notice) → Arabic menu bar, as in Apex Time.
-const VERSION = '1.3.0'
+// Login → msar-erp.com's shell: full-height sidebar (components/hr-shell/routes.ts, in its order, less
+// what needs the internet), topbar, and one page at a time in the main column.
+const VERSION = '2.0.0'
 const TRIAL_REPORTS = [
   'الحضور والانصراف تفصيلي',
   'الحضور والانصراف إجمالي',
   'حالة اليوم',
   'الحضور والانصراف بالحركات',
 ]
-const soon = (name) => () => UI.message(`«${name}» — قيد الإنشاء`)
 
-// Menu layout transcribed from the client's Apex Time video (2026-09-24).
+// Permission keys ("<menu>/<item>") are kept as they were, so saved roles still apply.
 const MENUS = [
-  { label: 'ملف', icon: 'm_file', items: [['تسجيل الخروج', logout, 'i_logout'], ['انهاء البرنامج', () => window.close(), 'i_power']] },
-  { label: 'البيانات الأساسية', icon: 'm_base', items: [
-    ['قوائم البرنامج', openLists, 'i_list'], ['الإدارات والأقسام', openDepartments, 'i_dept'], ['المشاريع', openProjects, 'i_project'],
-    ['مواعيد العمل', openShiftGroups, 'i_clock'], ['الموظفون', openEmployees, 'i_emp'], ['مجموعات الموظفين', openEmployeeGroups, 'i_groups'],
-    ['تعريف الأجهزة', openDevices, 'i_device'], ['العطلات الرسمية', openHolidays, 'i_holiday'],
+  { label: 'ملف', items: [['تسجيل الخروج', logout], ['انهاء البرنامج', () => window.close()]] },
+  { label: 'البيانات الأساسية', items: [['قوائم البرنامج', openLists], ['الإدارات والأقسام', openDepartments], ['المشاريع', openProjects],
+    ['مواعيد العمل', openShiftGroups], ['الموظفون', openEmployees], ['مجموعات الموظفين', openEmployeeGroups], ['تعريف الأجهزة', openDevices], ['العطلات الرسمية', openHolidays]] },
+  { label: 'الإجراءات', items: [['قراءة الحركات (شبكة - ملف)', openReadPunches], ['عرض الحركات', openViewPunches], ['إضافة وتعديل الحركات لموظف', openEditPunches],
+    ['الغاء الحركات المعدله يدويا', () => openDeletePunches(['manual'], 'إلغاء الحركات المعدله يدويا')], ['إضافة أجازات لموظف', openLeaves], ['إضافة أذونات لموظف', openPermissions],
+    ['ترحيل الحركات', postPunches], ['الغاء ترحيل الحركات', openUnpost], ['الغاء جميع بيانات الموظف بالنظام', purgeEmployee]] },
+  { label: 'التقارير', items: Object.keys(REPORTS).map((r) => [r, () => openReport(r)]) },
+  { label: 'الاعدادات', items: [['بيانات المؤسسه', openCompany], ['اعدادات المستخدمين', [['صلاحيات المستخدمين', openRoles], ['إدارة المستخدمين', openUsers]]],
+    ['اعدادات النظام', openSystemSettings], ['نسخة احتياطية', openGeneralSettings], ['سجل الحركات', openAuditLog]] },
+  { label: 'ادوات', items: [['تعديل بيانات الدخول', openChangeLogin]] },
+  { label: 'مساعده', items: [['فهرس المحتويات', openGuide], ['تسجيل المنتج', () => openRegister()], ['عن الشركة', showAbout]] },
+]
+async function showAbout() {
+  const p = await window.bridge.paths()
+  UI.message(`Masar Time Ver. ${VERSION}\nبرنامج الحضور والانصراف\n\nقاعدة البيانات: ${p.data}\nالنسخ الاحتياطية: ${p.backups}`)
+}
+
+const B = 'البيانات الأساسية/', A = 'الإجراءات/', S = 'الاعدادات/'
+// reports in lib/hr-reports.ts's order; those the site has no page for come last
+const REPORT_ORDER = ['حالة اليوم', 'الحضور والانصراف تفصيلي', 'الحضور والانصراف إجمالي', 'أجازات الموظفين', 'التأخير عن بداية الدوام اليومي', 'الغياب خلال فترة',
+  'التأخير عن الدوام خلال فترة', 'الموظفون', 'تأخير وإضافي الدوام', 'الحركات الغير مكتملة', 'أذونات الموظفين', 'بيان تأخير الموظفين', 'الحضور والانصراف بالحركات', 'مواعيد العمل']
+// [label, permission key, open, icon]
+const RAIL = [
+  { id: 'dashboard', label: 'لوحة القيادة', icon: 'layout-dashboard' },
+  { id: 'basic', label: 'البيانات الاساسية', icon: 'clipboard-list', items: [
+    ['الموظفين', `${B}الموظفون`, () => openEmployees(), 'users'],
+    ['الوظائف', `${B}قوائم البرنامج`, () => openList('job'), 'briefcase'],
+    ['الإدارات والأقسام', `${B}الإدارات والأقسام`, () => openDepartments(), 'building-2'],
+    ['أوقات العمل', `${B}مواعيد العمل`, () => openShiftGroups(), 'clock'],
+    ['المشاريع', `${B}المشاريع`, () => openProjects(), 'folder-kanban'],
+    ['المهام', `${B}قوائم البرنامج`, () => openList('task'), 'square-check'],
+    ['مجموعات الموظفين', `${B}مجموعات الموظفين`, () => openEmployeeGroups(), 'users-round'],
+    ['الجنسية', `${B}قوائم البرنامج`, () => openList('nationality'), 'globe'],
+    ['العطلات الرسمية', `${B}العطلات الرسمية`, () => openHolidays(), 'calendar-days'],
+    ['انواع الاجازات', `${B}قوائم البرنامج`, () => openList('leave'), 'umbrella'],
+    ['الديانة', `${B}قوائم البرنامج`, () => openList('religion'), 'heart-handshake'],
+    ['ملاحظات الحضور', `${B}قوائم البرنامج`, () => openList('att_note'), 'sticky-note'],
   ] },
-  { label: 'الإجراءات', icon: 'm_proc', items: [
-    ['قراءة الحركات (شبكة - ملف)', openReadPunches, 'i_read'], ['عرض الحركات', openViewPunches, 'i_view'], '-',
-    ['إضافة وتعديل الحركات لموظف', openEditPunches, 'i_edit'], ['الغاء الحركات المعدله يدويا', () => openDeletePunches(['manual'], 'إلغاء الحركات المعدله يدويا'), 'i_cancel'],
-    '-',
-    ['إضافة أجازات لموظف', openLeaves, 'i_leave'], ['إضافة أذونات لموظف', openPermissions, 'i_perm'], '-',
-    ['ترحيل الحركات', postPunches, 'i_post'], ['الغاء ترحيل الحركات', openUnpost, 'i_unpost'], '-', ['الغاء جميع بيانات الموظف بالنظام', purgeEmployee, 'i_purge'],
+  { id: 'attendance', label: 'الحضور والانصراف', icon: 'clock', items: [
+    ['اضافة اجازة', `${A}إضافة أجازات لموظف`, () => openLeaves(), 'plus'],
+    ['اضافة اذن', `${A}إضافة أذونات لموظف`, () => openPermissions(), 'mail-open'],
+    ['قراءة الحركات', `${A}قراءة الحركات (شبكة - ملف)`, () => openReadPunches(), 'download'],
+    ['عرض الحركات', `${A}عرض الحركات`, () => openViewPunches(), 'list'],
+    ['اضافة و تعديل حركات', `${A}إضافة وتعديل الحركات لموظف`, () => openEditPunches(), 'activity'],
+    ['الغاء الحركات المعدلة يدويا', `${A}الغاء الحركات المعدله يدويا`, () => openDeletePunches(['manual'], 'إلغاء الحركات المعدله يدويا'), 'file-minus'],
+    ['ترحيل الحركات', `${A}ترحيل الحركات`, () => postPunches(), 'send'],
+    ['إلغاء ترحيل الحركات', `${A}الغاء ترحيل الحركات`, () => openUnpost(), 'rotate-ccw'],
+    ['الغاء بيانات موظف', `${A}الغاء جميع بيانات الموظف بالنظام`, () => purgeEmployee(), 'user-x'],
+    { label: 'التقارير', icon: 'chart-column', children: REPORT_ORDER.map((r) => [r, `التقارير/${r}`, () => openReport(r)]) },
   ] },
-  { label: 'التقارير', icon: 'm_rep', items: Object.keys(REPORTS).map((r) => [r, () => openReport(r), REPORT_ICONS[r] || 'r_doc']) },
-  { label: 'الاعدادات', icon: 'm_set', items: [['بيانات المؤسسه', openCompany, 'i_company'],
-    ['اعدادات المستخدمين', [['صلاحيات المستخدمين', openRoles, 'i_roles'], ['إدارة المستخدمين', openUsers, 'i_users']], 'i_users'], ['اعدادات النظام', openSystemSettings, 'i_settings'], '-',
-    ['الربط بالموقع', openWebLinkLocked, 'i_link']] },
-  { label: 'ادوات', icon: 'm_tools', items: [['تعديل بيانات الدخول', openChangeLogin, 'i_login']] }, // Apex: nothing else here (backups run daily on their own)
-  { label: 'مساعده', icon: 'm_help', items: [['فهرس المحتويات', openGuide, 'i_book'], ['تسجيل المنتج', () => openRegister(), 'i_lock'], ['عن الشركة', async () => { const p = await window.bridge.paths(); UI.message(`Meena Time — الإصدار ${VERSION}\nمجلد البيانات: ${p.data}\nالنسخ الاحتياطية: ${p.backups} (نسخة تلقائية يومياً، آخر 30 نسخة)`) }, 'i_info']] },
+  { id: 'users', label: 'المستخدمين', icon: 'user-cog', items: [
+    ['المستخدمين', `${S}إدارة المستخدمين`, () => openUsers(), 'users'],
+    ['الصلاحيات', `${S}صلاحيات المستخدمين`, () => openRoles(), 'shield-check'],
+    ['حركات المستخدمين', `${S}سجل الحركات`, () => openAuditLog(), 'activity'],
+  ] },
+  { id: 'settings', label: 'الاعدادات', icon: 'settings', items: [
+    ['اعدادات الحضور و الانصراف', `${S}اعدادات النظام`, () => openSystemSettings(), 'sliders-horizontal'],
+    ['الاجهزة', `${B}تعريف الأجهزة`, () => openDevices(), 'fingerprint'],
+    ['الاعدادات العامة', `${S}نسخة احتياطية`, () => openGeneralSettings(), 'settings'],
+    ['بيانات الشركة', `${S}بيانات المؤسسه`, () => openCompany(), 'building'],
+  ] },
 ]
 
 let licence = { ok: false }
 const Session = (window.Session = { userId: null, username: '', admin: false, perms: null })
 
 function setCaption() {
-  // Apex shows this line in the window's own title bar
-  document.title = document.getElementById('caption-text').textContent =
-    `Meena Time Ver. ${VERSION} (${licence.ok ? licence.edition : 'Trial'}) ${licence.ok ? (licence.trial ? `حتى ${licence.expires}` : 'Registered') : 'Unregistered'}${DB.year !== 'main' ? ` — ${DB.year}` : ''}`
+  document.title = `Masar Time ${VERSION}${DB.year !== 'main' ? ` — ${DB.year}` : ''}`
+  const v = document.getElementById('rail-version')
+  if (v) v.textContent = `Masar Time ${VERSION}`
 }
 
-function buildMenu() {
-  const bar = document.getElementById('menubar')
-  bar.innerHTML = ''
-  for (const m of MENUS) {
-    const menu = UI.el(`<div class="menu"><button>${ICONS[m.icon]}<span>${m.label}</span></button><div class="drop"></div></div>`)
-    const drop = menu.querySelector('.drop')
-    // screen keys are "<menu>/<item>" — the same label can exist in two menus; a sub-menu
-    // (Apex's «اعدادات المستخدمين ▸») shows when any of its items is allowed
-    const open = ['تسجيل المنتج', 'عن الشركة', 'فهرس المحتويات', 'تعديل بيانات الدخول', 'تسجيل الخروج', 'انهاء البرنامج']
-    const allowed = (label, fn) => Array.isArray(fn) ? fn.some(([l]) => allowed(l)) : open.includes(label) || Perm.can(`${m.label}/${label}`)
-    const items = m.items.filter((it) => it === '-' || allowed(it[0], it[1])).filter((it, i, a) => !(it === '-' && (i === 0 || a[i - 1] === '-' || i === a.length - 1)))
-    if (!items.some((it) => it !== '-')) continue
-    const ico = (k) => (ICONS[k] || ICONS.item).replace('<svg', '<svg class="ico"')
-    const itemButton = (label, fn, icon) => {
-      const b = UI.el(`<button>${ico(icon)}<span>${label}</span></button>`)
-      b.onclick = () => { closeMenus(); Perm.run(`${m.label}/${label}`, fn || soon(label)) }
-      return b
-    }
-    for (const it of items) {
-      if (it === '-') { drop.appendChild(UI.el('<hr>')); continue }
-      const [label, fn, icon] = it
-      if (Array.isArray(fn)) {
-        const sub = UI.el(`<div class="sub"><button class="has-sub">${ico(icon)}<span>${label}</span><i>◂</i></button><div class="drop sub-drop"></div></div>`)
-        for (const [l, f, ic] of fn.filter(([l]) => allowed(l))) sub.querySelector('.sub-drop').appendChild(itemButton(l, f, ic))
-        drop.appendChild(sub)
-      } else drop.appendChild(itemButton(label, fn, icon))
-    }
-    menu.querySelector(':scope > button').onclick = (e) => {
-      e.stopPropagation()
-      const was = menu.classList.contains('open')
-      closeMenus()
-      if (!was) menu.classList.add('open')
-    }
-    menu.addEventListener('mouseenter', () => { if (bar.querySelector('.menu.open') && !menu.classList.contains('open')) { closeMenus(); menu.classList.add('open') } })
-    bar.appendChild(menu)
-  }
-  // Apex's round «home» button at the far end of the bar: closes every child window
-  const home = UI.el(`<button class="home-btn" title="الرئيسية">${ICONS.home}</button>`)
-  home.onclick = () => { [...UI.wins.keys()].forEach((id) => UI.close(id)); renderHome() } // and back to the 4 main tiles
-  bar.appendChild(home)
-  bar.hidden = false
-}
-const closeMenus = () => document.querySelectorAll('.menu.open').forEach((m) => m.classList.remove('open'))
-document.addEventListener('mousedown', (e) => { if (!e.target.closest('#menubar')) closeMenus() })
+// the sidebar leaves whatever is open and goes to one page (an «unsaved changes» answered with إلغاء stays)
+const Nav = (window.Nav = {
+  section: null,
+  active: null,
+  async leave() {
+    for (const id of [...UI.wins.keys()].reverse()) if (!(await UI.close(id))) return false
+    return true
+  },
+  async go(sectionLabel, [label, key, fn]) {
+    if (!(await this.leave())) return
+    this.section = sectionLabel
+    this.mark(label)
+    if (!Perm.can(key)) return UI.message('ليس لديك صلاحية لهذه الشاشة')
+    Perm.run(key, fn)
+  },
+  async home() {
+    if (await this.leave()) this.mark(null)
+  },
+  mark(label) {
+    this.active = label
+    if (!label) this.section = null
+    document.querySelectorAll('#rail [data-page]').forEach((a) => {
+      const on = a.dataset.page === (label ?? 'لوحة القيادة')
+      a.classList.toggle('bg-[var(--apex-active)]', on)
+      a.classList.toggle('font-bold', on)
+      a.querySelector('.bar')?.toggleAttribute('hidden', !on)
+    })
+  },
+})
 
-// Apex home: 4 tiles; each opens its own page of tiles (the round home button comes back here)
-const HOME_PAGES = {
-  setup: ['التجهيز', [['قوائم البرنامج', 'البيانات الأساسية/قوائم البرنامج', () => openLists(), 'i_list'],
-    ['الأقسام والإدارات', 'البيانات الأساسية/الإدارات والأقسام', () => openDepartments(), 'i_dept'], ['المشاريع', 'البيانات الأساسية/المشاريع', () => openProjects(), 'i_project'],
-    ['مواعيد العمل', 'البيانات الأساسية/مواعيد العمل', () => openShiftGroups(), 'i_clock'], ['الموظفون', 'البيانات الأساسية/الموظفون', () => openEmployees(), 'i_emp'],
-    ['تعريف الأجهزة', 'البيانات الأساسية/تعريف الأجهزة', () => openDevices(), 'i_device'], ['المجموعات', 'البيانات الأساسية/مجموعات الموظفين', () => openEmployeeGroups(), 'i_groups'],
-    ['العطلات الرسمية', 'البيانات الأساسية/العطلات الرسمية', () => openHolidays(), 'i_holiday']]],
-  proc: ['الإجراءات', [['قراءة الحركات', 'الإجراءات/قراءة الحركات (شبكة - ملف)', () => openReadPunches(), 'i_read'],
-    ['عرض الحركات', 'الإجراءات/عرض الحركات', () => openViewPunches(), 'i_view'], ['إضافة حركات', 'الإجراءات/إضافة وتعديل الحركات لموظف', () => openEditPunches(), 'i_edit'],
-    ['إضافة أذونات', 'الإجراءات/إضافة أذونات لموظف', () => openPermissions(), 'i_perm'], ['إضافة أجازات', 'الإجراءات/إضافة أجازات لموظف', () => openLeaves(), 'i_leave'],
-    ['ترحيل ساعات العمل', 'الإجراءات/ترحيل الحركات', () => postPunches(), 'i_post'], ['إلغاء ساعات العمل', 'الإجراءات/الغاء ترحيل الحركات', () => openUnpost(), 'i_unpost']]],
-  reports: ['التقارير', [['الموظفون', 'الموظفون'], ['الحضور والانصراف تفصيلي', 'الحضور والانصراف تفصيلي'], ['الحضور والانصراف إجمالي', 'الحضور والانصراف إجمالي'],
-    ['التأخير اليومي', 'التأخير عن بداية الدوام اليومي'], ['حالة اليوم', 'حالة اليوم'], ['تقرير الغياب', 'الغياب خلال فترة'], ['حركات الموظفين', 'الحضور والانصراف بالحركات'], ['الحركات الغير مكتملة', 'الحركات الغير مكتملة'],
-    ['التأخير خلال فترة', 'التأخير عن الدوام خلال فترة'], ['الأجازات', 'أجازات الموظفين']].map(([l, r]) => [l, `التقارير/${r}`, () => openReport(r), REPORT_ICONS[r] || 'r_doc'])],
-  users: ['المستخدمون', [['صلاحيات الإستخدام', 'الاعدادات/صلاحيات المستخدمين', () => openRoles(), 'i_roles'], ['المستخدمون', 'الاعدادات/إدارة المستخدمين', () => openUsers(), 'i_users'],
-    ['بيانات الشركة', 'الاعدادات/بيانات المؤسسه', () => openCompany(), 'i_company'], ['الإعدادات العامة', 'الاعدادات/اعدادات النظام', () => openSystemSettings(), 'i_settings']]],
+// components/hr-shell/icon-rail.tsx
+function buildRail() {
+  const rail = document.getElementById('rail')
+  const row = 'relative flex h-10 w-full items-center gap-2.5 text-[14px] transition-colors text-white/85 hover:bg-white/10 hover:text-white'
+  const allowed = (it) => Perm.can(it[1])
+  const link = ([label, , , icon], depth) => `<button type="button" data-page="${UI.esc(label)}" class="${row}" style="padding-right:${44 + depth * 16}px;padding-left:16px">
+      <span class="bar absolute inset-y-0 right-0 w-1 bg-[var(--masar-green)]" aria-hidden hidden></span>${icon ? ic(icon).replace('class="lucide"', 'class="lucide h-4 w-4 shrink-0 opacity-80"') : ''}<span class="truncate">${UI.esc(label)}</span></button>`
+  const chev = ic('chevron-down').replace('class="lucide"', 'class="lucide chev h-4 w-4 shrink-0 opacity-60 transition-transform"')
+  const sections = RAIL.map((s) => {
+    if (!s.items) return `<button type="button" data-page="${s.label}" data-home class="relative flex h-12 w-full items-center gap-3 px-5 text-[15px] font-bold transition-colors hover:bg-white/10">
+      <span class="bar absolute inset-y-0 right-0 w-1 bg-[var(--masar-green)]" aria-hidden hidden></span>${ic(s.icon).replace('class="lucide"', 'class="lucide h-5 w-5 shrink-0"')}<span class="truncate">${s.label}</span></button>`
+    const items = s.items.map((it) => {
+      if (!it.children) return allowed(it) ? link(it, 0) : ''
+      const kids = it.children.filter(allowed)
+      return kids.length ? `<div class="rail-group"><button type="button" data-toggle aria-expanded="false" class="${row}" style="padding-right:44px;padding-left:16px">${ic(it.icon).replace('class="lucide"', 'class="lucide h-4 w-4 shrink-0 opacity-80"')}<span class="flex-1 truncate text-start">${it.label}</span>${chev}</button><div class="rail-kids" hidden>${kids.map((k) => link(k, 1)).join('')}</div></div>` : ''
+    }).join('')
+    return items ? `<div class="rail-group" data-section="${s.id}"><button type="button" data-toggle aria-expanded="false" class="flex h-12 w-full items-center gap-3 px-5 text-[15px] font-bold transition-colors hover:bg-white/10 text-white/90">${ic(s.icon).replace('class="lucide"', 'class="lucide h-5 w-5 shrink-0"')}<span class="flex-1 truncate text-start">${s.label}</span>${chev}</button><div class="rail-kids bg-black/10 py-1" hidden>${items}</div></div>` : ''
+  }).join('')
+  rail.innerHTML = `<button type="button" id="rail-logo" class="flex h-[92px] shrink-0 items-center justify-center border-b border-white/10 px-6" aria-label="Masar Time">
+      <img src="brand/masar-logo-white.png" alt="Masar Time" class="h-[54px] max-w-full w-auto object-contain"></button>
+    <nav class="flex-1 overflow-y-auto py-3">${sections}</nav>
+    <div class="shrink-0 border-t border-white/10 px-3 pt-3"><button type="button" id="rail-help" class="flex w-full items-center gap-2.5 rounded-lg bg-white/10 px-4 py-2.5 text-[14px] font-bold text-white transition hover:bg-white/[.16]">
+      ${ic('circle-help').replace('class="lucide"', 'class="lucide h-[18px] w-[18px] text-[var(--masar-green)]"')}تحتاج مساعدة؟</button></div>
+    <div class="shrink-0 px-5 py-3 text-[11.5px] leading-6 text-white/70"><div>آخر تحديث: <span id="rail-updated" class="text-white/90"></span></div><div id="rail-version"></div></div>`
+  const pages = {}
+  for (const s of RAIL) for (const it of s.items || []) { if (it.children) it.children.forEach((k) => { pages[k[0]] = [s.label, k] }); else pages[it[0]] = [s.label, it] }
+  rail.querySelector('nav').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-toggle]')
+    if (t) {
+      const kids = t.nextElementSibling, open = kids.hidden
+      kids.hidden = !open
+      t.setAttribute('aria-expanded', open)
+      t.querySelector('.chev')?.classList.toggle('rotate-180', open)
+      return
+    }
+    const b = e.target.closest('[data-page]')
+    if (!b) return
+    if ('home' in b.dataset) return Nav.home()
+    const [section, it] = pages[b.dataset.page]
+    Nav.go(section, it)
+  })
+  rail.querySelector('#rail-logo').onclick = () => Nav.home()
+  rail.querySelector('#rail-help').onclick = () => openGuide()
+  const fmt = () => { rail.querySelector('#rail-updated').textContent = new Date().toLocaleString('ar-SA-u-nu-latn', { weekday: 'long', hour: '2-digit', minute: '2-digit' }) }
+  fmt(); setInterval(fmt, 60e3)
+  Nav.mark(null)
+  setCaption()
+  return pages
 }
-function renderHome(page = null) {
-  const desk = document.getElementById('desktop')
-  desk.querySelector('#home')?.remove()
-  const guard = (l, fn) => () => (Perm.can(l) ? Perm.run(l, fn) : UI.message('ليس لديك صلاحية لهذه الشاشة'))
-  if (page) {
-    const [title, items] = HOME_PAGES[page]
-    const sub = UI.el(`<div id="home" class="sub sub-${page}"><div class="title">${title}</div>
-      <div class="tiles">${items.map(([l], i) => `<div class="tile" data-i="${i}">${ICONS[items[i][3]] || ''}<span>${l}</span></div>`).join('')}</div></div>`)
-    sub.querySelectorAll('.tile').forEach((t) => { const [, key, fn] = items[+t.dataset.i]; t.onclick = guard(key, fn) })
-    desk.prepend(sub)
-    UI.renderStrip()
-    return
-  }
-  const trial = licence.trial ? `
-    <div class="trial">${ICONS.key.replace('<svg', '<svg class="key"')}
-      نسخة تجريبية كاملة المميزات<br>
-      تنتهي الفترة التجريبية يوم ${UI.esc(licence.expires)} — متبقي ${licence.daysLeft} ${licence.daysLeft > 10 || licence.daysLeft < 3 ? 'يوم' : 'أيام'}<br>
-      للاشتراك تواصل معنا على واتساب <span dir="ltr">0535322228</span>
-    </div>` : licence.ok ? '' : `
-    <div class="trial">${ICONS.key.replace('<svg', '<svg class="key"')}
-      هذه النسخة تجريبية<br>
-      كل مميزات النسخة متاحة ما عدا التقارير إلا التقارير الآتية<br>
-      ${TRIAL_REPORTS.map((r, i) => `${i + 1}- ${r} (متاح 3 مرات طباعة فقط)`).join('<br>')}
-    </div>`
-  const home = UI.el(`<div id="home">
-      <div class="title">الرئيسية</div>${trial}
-      <div class="tiles">
-        <div class="tile" data-t="users">${ICONS.people}<span>المستخدمون</span></div>
-        <div class="tile" data-t="reports">${ICONS.reports}<span>التقارير</span></div>
-        <div class="tile" data-t="proc">${ICONS.device}<span>الإجراءات</span></div>
-        <div class="tile" data-t="setup">${ICONS.tools}<span>التجهيز</span></div>
-      </div></div>`)
-  home.querySelectorAll('.tile').forEach((t) => (t.onclick = () => renderHome(t.dataset.t)))
-  desk.prepend(home)
+
+// components/hr-shell/topbar.tsx (its «فرع:» filter is the department filter of the dashboard here)
+function buildTopbar(pages) {
+  const top = document.getElementById('topbar')
+  const logo = UI.meta('company_logo')
+  const deps = DB.all('SELECT id, name_ar FROM departments WHERE parent_id IS NULL OR parent_id = "" ORDER BY name_ar')
+  top.innerHTML = `<div class="flex h-[60px] items-center gap-3 bg-[var(--masar-ink-2)] px-3 text-white shadow-[0_2px_8px_rgba(0,0,0,.12)] md:px-5">
+    <div id="tb-user" class="relative shrink-0"><button type="button" id="tb-user-btn" aria-haspopup="menu" class="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-white/10">
+      <span class="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-white/15 ring-2 ring-white/25">${ic('circle-user-round').replace('class="lucide"', 'class="lucide h-8 w-8 text-white/90"')}</span>
+      <span class="hidden max-w-[150px] truncate text-[14px] font-bold sm:inline">${UI.esc(Session.username)}</span>${ic('chevron-down').replace('class="lucide"', 'class="lucide h-4 w-4 opacity-70"')}</button>
+      <div id="tb-user-menu" role="menu" hidden class="absolute right-0 top-[calc(100%+6px)] w-56 overflow-hidden rounded-lg bg-white text-slate-700 shadow-xl ring-1 ring-black/5">
+        <div class="border-b border-slate-100 px-4 py-3"><div class="truncate text-[14px] font-bold text-slate-800">${UI.esc(Session.username)}</div><div class="text-[12px] text-slate-500">${Session.admin ? 'مدير النظام' : 'مستخدم'}</div></div>
+        ${[['change', 'تعديل بيانات الدخول', 'key-round'], ['about', 'عن البرنامج', 'circle-help'], ['logout', 'خروج', 'log-out'], ['quit', 'انهاء البرنامج', 'x']].map(([k, l, i]) => `<button type="button" role="menuitem" data-u="${k}" class="flex w-full items-center gap-2 px-4 py-2.5 text-[13.5px] hover:bg-slate-50">${ic(i).replace('class="lucide"', 'class="lucide h-4 w-4"')}${l}</button>`).join('')}
+      </div></div>
+    <label class="hidden shrink-0 items-center gap-1.5 text-[14px] md:flex">${ic('map-pin').replace('class="lucide"', 'class="lucide h-4 w-4 opacity-80"')}<span class="opacity-85">الإدارة:</span>
+      <select id="tb-dep" aria-label="الإدارة" class="tb-select max-w-[190px] cursor-pointer bg-transparent font-bold outline-none"><option value="">كل الإدارات</option>${deps.map((d) => `<option value="${d.id}">${UI.esc(d.name_ar)}</option>`).join('')}</select></label>
+    <div class="flex-1"></div>
+    <div class="relative hidden w-[300px] md:block"><input id="tb-q" placeholder="بحث هنا..." aria-label="بحث" class="h-10 w-full rounded-md bg-[var(--masar-ink)] pe-10 ps-3 text-[14px] text-white outline-none ring-1 ring-white/10 placeholder:text-white/55 focus:ring-white/30">
+      ${ic('search').replace('class="lucide"', 'class="lucide pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-white/70"')}
+      <div id="tb-hits" hidden class="absolute inset-x-0 top-[calc(100%+6px)] overflow-hidden rounded-lg bg-white py-1 text-slate-700 shadow-xl ring-1 ring-black/5"></div></div>
+    <div class="hidden shrink-0 items-center gap-1.5 text-[14px] font-bold xl:flex">مسار تايم - النظام الذكي</div>
+    ${logo ? `<span class="flex h-10 shrink-0 items-center rounded-md bg-white px-2 shadow-sm"><img src="${logo}" alt="" class="h-8 max-w-[90px] w-auto object-contain md:max-w-[140px]"></span>` : ''}
+  </div>`
+  const $ = (s) => top.querySelector(s)
+  const menu = $('#tb-user-menu')
+  $('#tb-user-btn').onclick = () => { menu.hidden = !menu.hidden }
+  document.addEventListener('mousedown', (e) => { if (!$('#tb-user').contains(e.target)) menu.hidden = true })
+  menu.addEventListener('click', (e) => {
+    const k = e.target.closest('[data-u]')?.dataset.u
+    menu.hidden = true
+    if (k === 'change') Nav.leave().then((ok) => ok && openChangeLogin())
+    if (k === 'about') showAbout()
+    if (k === 'logout') logout()
+    if (k === 'quit') window.close()
+  })
+  $('#tb-dep').addEventListener('change', (e) => { Dashboard.department = +e.target.value || null; Nav.home().then(() => renderHome()) })
+  // quick search over every screen
+  const names = Object.keys(pages).filter((n) => Perm.can(pages[n][1][1]))
+  const q = $('#tb-q'), hits = $('#tb-hits')
+  const go = (n) => { q.value = ''; hits.hidden = true; Nav.go(pages[n][0], pages[n][1]) }
+  q.addEventListener('input', () => {
+    const v = q.value.trim(), found = v ? names.filter((n) => n.includes(v)).slice(0, 8) : []
+    hits.innerHTML = found.map((n) => `<button type="button" class="block w-full px-4 py-2 text-start text-[13.5px] hover:bg-slate-50">${UI.esc(n)}</button>`).join('')
+    hits.hidden = !found.length
+  })
+  hits.addEventListener('mousedown', (e) => { const b = e.target.closest('button'); if (b) go(b.textContent) })
+  q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && hits.firstChild) go(hits.firstChild.textContent) })
+  q.addEventListener('blur', () => setTimeout(() => { hits.hidden = true }, 150))
+}
+
+// the trial notice, where the site shows its subscription banner
+function renderBanner() {
+  const el = document.getElementById('banner')
+  const days = licence.daysLeft
+  el.innerHTML = licence.trial
+    ? `<div class="sub-banner">${ic('triangle-alert')}<span>نسخة تجريبية كاملة المميزات — تنتهي يوم ${UI.esc(licence.expires)}، متبقي ${days} ${days > 10 || days < 3 ? 'يوم' : 'أيام'}. للاشتراك تواصل معنا على واتساب <b dir="ltr">0535322228</b></span></div>`
+    : licence.ok ? '' : `<div class="sub-banner">${ic('triangle-alert')}<span>هذه النسخة تجريبية: كل المميزات متاحة ما عدا التقارير إلا: ${TRIAL_REPORTS.join('، ')} (متاح 3 مرات طباعة فقط).</span><button type="button" id="ban-reg">تسجيل المنتج</button></div>`
+  el.querySelector('#ban-reg')?.addEventListener('click', () => openRegister())
+}
+function renderHome() {
+  renderBanner()
+  Dashboard.render()
   UI.renderStrip()
+}
+
+// Punches pushed by devices on the network (lib/gate): into the database, then acknowledged
+const Gate = {
+  running: false,
+  init() {
+    if (!window.bridge.gateDrain) return
+    window.bridge.onGate(() => this.drain())
+    setInterval(() => this.drain(), 15e3) // in case a nudge was missed
+    this.drain()
+  },
+  async drain() {
+    if (this.running) return
+    this.running = true
+    try {
+      const bySerial = Object.fromEntries(DB.all("SELECT id, serial FROM devices WHERE IFNULL(serial, '') <> ''").map((d) => [d.serial.trim(), d.id]))
+      for (;;) {
+        const { rows, next } = await window.bridge.gateDrain(5000)
+        if (!rows.length) { if (next) await window.bridge.gateAck(next); break }
+        const bySn = {}
+        for (const r of rows) (bySn[r.sn || ''] ||= []).push({ code: r.c, ts: r.t })
+        for (const [sn, list] of Object.entries(bySn)) await storePunches(list, 'device', bySerial[sn] ?? null)
+        await window.bridge.gateAck(next) // storePunches has saved them: only now may the journal forget
+        if (rows.length < 5000) break
+      }
+      if (document.querySelector('#home')?.style.display !== 'none') Dashboard.render()
+    } catch (e) { console.error('gate', e) } finally { this.running = false }
+  },
 }
 
 async function openRegister() {
   const st = await window.bridge.licenceStatus()
   await UI.dialog({
-    winbar: 'تسجيل المنتج', head: 'تسجيل المنتج', width: 898, btnsLeft: true,
+    head: 'تسجيل المنتج', width: 640, btnsLeft: true,
     bodyHtml: `
       <div class="fields" style="grid-template-columns:120px 1fr">
         <label>كود الطلب</label><input type="text" id="req" readonly dir="ltr" value="${UI.esc(st.requestCode)}">
         <label>كود الترخيص</label><input type="text" id="lic" dir="ltr" placeholder="${st.ok ? 'البرنامج مسجل' : ''}">
       </div>
-      <div style="width:64px;height:64px">${ICONS.lock}</div>`,
+`,
     buttons: [
       { label: 'إسترجاع ترخيص', icon: 'restore', onClick: async (d) => {
         const s = await window.bridge.licenceStatus()
@@ -180,7 +295,7 @@ async function lockScreen(st) {
   document.querySelectorAll('.dlg-backdrop:not(.lock)').forEach((b) => b.remove())
   if (document.querySelector('.dlg-backdrop.lock')) return
   await UI.dialog({
-    winbar: 'تسجيل المنتج', head: 'البرنامج مقفل', width: 898, btnsLeft: true, cls: 'lock-dlg',
+    head: 'البرنامج مقفل', width: 640, btnsLeft: true, cls: 'lock-dlg',
     onOpen: (d) => d.root.classList.add('lock'),
     bodyHtml: `
       <div style="display:flex;flex-direction:column;gap:12px">
@@ -214,24 +329,27 @@ async function login() {
   const names = (await window.bridge.dbNames?.()) || ['main']
   const last = localStorage.getItem('mt-last-user') || 'أ'
   return UI.dialog({
-    head: 'شاشة الدخول', width: 534,
-    foot: `Meena Time Ver. ${VERSION} ${licence.ok ? 'Registered' : 'Unregistered'}`,
+    head: 'تسجيل الدخول', width: 440, cls: 'login-dlg',
+    foot: `Masar Time ${VERSION}`,
     // another database: remember the choice and restart on it (each database has its own users)
-    onOpen: (d) => d.root.querySelector('#year').addEventListener('change', async (e) => {
-      if (await window.bridge.useDb(e.target.value)) window.bridge.relaunch()
-    }),
+    onOpen: (d) => {
+      d.root.querySelector('#year').addEventListener('change', async (e) => {
+        if (await window.bridge.useDb(e.target.value)) window.bridge.relaunch()
+      })
+      d.root.classList.add('login-page')
+      d.root.prepend(UI.el('<div class="login-photo"><img src="brand/login-photo.webp" alt=""></div>'))
+      d.root.querySelector('.dlg').prepend(UI.el('<img class="login-logo" src="brand/masar-logo-white.png" alt="Masar Time">'))
+      d.root.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !d.root.querySelector('.dlg-backdrop')) d.root.querySelector('.btns .pri')?.click() })
+      d.root.querySelector(names.length > 1 ? '#year' : '#pass').focus()
+    },
     bodyHtml: `
-      <div class="fields">
-        <label>قاعدة البيانات</label><select id="year" ${names.length > 1 ? '' : 'disabled'}>${names.map((n) => `<option value="${UI.esc(n)}" ${n === DB.year ? 'selected' : ''}>${UI.esc(dbLabel(n))}</option>`).join('')}</select>
-        <label>اسم المستخدم</label><input type="text" id="user" value="${UI.esc(last)}">
-        <label>كلمة المرور</label><input type="password" id="pass">
-        <label>الواجهة</label>
-        <div class="lang"><label style="color:inherit;font-weight:normal"><input type="radio" name="lang" checked> عربي</label>
-          <label style="color:inherit;font-weight:normal"><input type="radio" name="lang" disabled> English</label></div>
-      </div>
-      <div class="avatar">${ICONS.avatar}</div>`,
+      <div class="login-fields">
+        <label class="lf" ${names.length > 1 ? '' : 'hidden'}>${ic('database')}<select id="year" aria-label="قاعدة البيانات" ${names.length > 1 ? '' : 'disabled'}>${names.map((n) => `<option value="${UI.esc(n)}" ${n === DB.year ? 'selected' : ''}>${UI.esc(dbLabel(n))}</option>`).join('')}</select></label>
+        <label class="lf">${ic('user')}<input type="text" id="user" placeholder="اسم المستخدم" aria-label="اسم المستخدم" value="${UI.esc(last)}"></label>
+        <label class="lf">${ic('lock')}<input type="password" id="pass" placeholder="كلمة المرور" aria-label="كلمة المرور"></label>
+      </div>`,
     buttons: [
-      { label: 'موافق', icon: 'ok', onClick: async (d) => {
+      { label: 'تسجيل الدخول', icon: 'ok', onClick: async (d) => {
         const user = d.root.querySelector('#user').value.trim()
         const pass = d.root.querySelector('#pass').value
         // «admin» (any case) also signs in as the built-in administrator «أ», as in Apex Time
@@ -258,7 +376,6 @@ async function login() {
         await DB.flush()
         d.close(true)
       } },
-      { label: 'الغاء', icon: 'cancel', onClick: () => window.close() },
     ],
   })
 }
@@ -413,16 +530,17 @@ function openRestore() {
   if (licence.locked) await lockScreen(licence)
   setCaption()
   await login()
-  document.getElementById('statusbar').innerHTML = `المستخدم: <b>${UI.esc(Session.username)}</b>`
-  buildMenu()
+  document.getElementById('shell').hidden = false
+  buildTopbar(buildRail())
   renderHome()
   WebSync.init()
   AutoRead.restart()
+  Gate.init()
   // a trial that ends while the program is open locks it too
   setInterval(async () => {
     const st = await window.bridge.licenceStatus()
     if (st.locked) { await lockScreen(st); licence = st.ok ? st : await window.bridge.licenceStatus() }
     else if (st.ok !== licence.ok || st.daysLeft !== licence.daysLeft) licence = st
-    setCaption(); if (document.querySelector('#home:not(.sub)')) renderHome()
+    setCaption(); renderHome()
   }, 10 * 60e3)
 })()

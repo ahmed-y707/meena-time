@@ -8,3 +8,5 @@ tools/keys/private.pem
 demo/
 !tools/demo-data.sqlite
 feature-shots/
+renderer/masar.css
+renderer/lucide.js

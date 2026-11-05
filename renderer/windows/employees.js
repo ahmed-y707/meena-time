@@ -9,109 +9,70 @@ const EMP_STATUSES = ['نشط', 'غير نشط', 'موقوف', 'منتهي']
 // attendance options, saved with «حفظ». A double click on an employee opens the full form
 // (status, dates, personal data, photo — Meena's extras).
 function openEmployees() {
-  UI.openWindow('employees', 'الموظفون', { width: 1084, height: 660 }, (body, win) => {
-    let current = null, q = '', dep = null
-    const bar = UI.toolbar([
-      { key: 'help', label: 'مساعده', icon: 'help', onClick: () => UI.message('اختر الإدارة أو القسم من «الاقسام»، ثم «جديد» لموظف جديد أو اختر موظفاً من القائمة لتعديله، ثم «حفظ».\nزر «الاعدادات» يفتح باقي بيانات الموظف وإعدادات الحضور.') },
-      { key: 'new', label: 'جديد', icon: 'new', onClick: () => { select(null); form.querySelector('[data-f=code]').focus() } },
-      { key: 'save', label: 'حفظ', icon: 'save', onClick: save },
-      { key: 'undo', label: 'إهمال', icon: 'undo', onClick: () => fill(current) },
-      { key: 'del', label: 'حذف', icon: 'del', onClick: remove },
-      { key: 'search', label: 'بحث', icon: 'search', onClick: search },
-      { key: 'print', label: 'طباعه', icon: 'print', onClick: () => UI.printGrid('الموظفون', wrap) },
-      { key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() },
-    ])
-    const sel = (field, options) => `<select data-f="${field}"><option value="">-</option>${options.map(([v, l]) => `<option value="${UI.esc(v)}">${UI.esc(l)}</option>`).join('')}</select>`
-    const religions = [...new Set(['مسلم', 'غير مسلم', ...listOptions('religion')().map(([, n]) => n)])].map((n) => [n, n])
-    const band = UI.el('<div class="band">الكل</div>')
-    const wrap = UI.el(`<div class="grid-wrap"><table class="grid"><thead><tr><th style="width:16px"></th>
-      <th style="width:150px">كود الموظف</th><th class="sorted">اسم الموظف عربي</th><th>اسم الموظف أجنبي</th></tr></thead><tbody></tbody></table></div>`)
-    const form = UI.el(`<fieldset class="emp-form"><legend>بيانات الموظف</legend>
-      <label>رقم الموظف <i class="req">*</i></label><div><input type="text" data-f="code" dir="ltr" class="code"></div>
-      <label>الاعدادات</label><div class="set"><button type="button" id="emp-settings" title="اعدادات الحضور وباقي بيانات الموظف">${ICONS.gear}</button><span>لتعديل اعدادات الحضور للموظف</span></div>
-      <label>اسم الموظف <i class="req">*</i></label><input type="text" data-f="name_ar">
-      <label>الاسم الاجنبى</label><input type="text" data-f="name_en" dir="ltr">
-      <label>أوقات العمل <i class="req">*</i></label>${sel('shift_group_id', opts('shift_groups')())}
-      <label>الوظيفة</label>${sel('job_id', listOptions('job')())}
-      <label>المشروع</label>${sel('project_id', opts('projects')())}
-      <label>المهمة</label>${sel('task_id', listOptions('task')())}
-      <label>الديانة</label>${sel('religion', religions)}
-      <label>التليفون</label><input type="text" data-f="mobile" dir="ltr">
-      <label>البريد الالكترونى</label><input type="text" data-f="email" dir="ltr" class="wide">
-      <div class="emp-set" hidden><div class="es-cap"><button type="button" class="es-x" title="إغلاق">✕</button>الإعدادات</div>
-        <div class="es-warn">${EMP_SET_WARNING}</div>
-        ${EMP_SETTINGS.map(([f, l]) => `<label class="es-row"><input type="checkbox" data-f="${f}"> ${l}</label>`).join('')}</div>
-    </fieldset>`)
-    const unplaced = !!DB.one('SELECT 1 FROM employees WHERE department_id IS NULL AND section_id IS NULL LIMIT 1')
-    const tree = UI.deptTree((id, name) => { dep = id; band.textContent = name; load() }, { title: 'الاقسام', apex: true, none: unplaced })
-    const main = UI.el('<div class="emp-main"></div>')
-    main.append(band, wrap, form)
-    const layout = UI.el('<div class="emp-apex"></div>')
-    layout.append(tree, main) // RTL: the tree on the right, as in Apex
-    body.append(bar, layout)
-    const tbody = wrap.querySelector('tbody')
-    const values = () => Object.fromEntries([...form.querySelectorAll('[data-f]')].map((i) => [i.dataset.f, i.type === 'checkbox' ? (i.checked ? 1 : 0) : i.value.trim()]))
-    // a new employee joins the department / section selected in the tree
-    const placement = () => {
-      const d = dep > 0 && DB.one('SELECT id, parent_id FROM departments WHERE id = ?', [dep])
-      return d ? (d.parent_id ? { department_id: d.parent_id, section_id: d.id } : { department_id: d.id, section_id: null }) : {}
+  UI.openWindow('employees', 'الموظفين', { width: 1200 }, (body, win) => {
+    let rows = [], q = '', dep = '', status = 'الكل', page = 1, size = 25
+    const can = (a) => Perm.can(win.permKey, a)
+    const I = empInfo()
+    const deptOpts = depOptions()
+    const bar = UI.el('<div class="toolbar list-bar"></div>')
+    bar.append(UI.searchBox('بحث بالكود أو الاسم', (v) => { q = v; page = 1; draw() }))
+    const filt = UI.el(`<div class="tb-filter"><select id="emp-dep" aria-label="الإدارة"><option value="">كل الإدارات</option><option value="0">بدون قسم</option>${deptOpts.map(([v, l]) => `<option value="${v}">${UI.esc(l)}</option>`).join('')}</select></div>`)
+    filt.querySelector('select').addEventListener('change', (e) => { dep = e.target.value; page = 1; load() })
+    bar.append(filt, UI.exportMenu('الموظفين', () => allTable()))
+    bar.append(UI.toolbar([{ key: 'new', label: 'اضافة', icon: 'new', onClick: add }]).firstChild)
+    const card = UI.el(`<div class="apex-card"><div class="grid-wrap"><table class="apex-table"><thead><tr><th>كود الموظف</th><th>اسم الموظف</th><th>الاسم الأجنبي</th><th>الوظيفة</th><th>الإدارة</th><th>القسم</th><th>الدوام</th><th>الحالة</th><th class="apex-col-actions"></th></tr></thead><tbody></tbody></table></div><div class="pager"></div></div>`)
+    body.append(bar, card)
+    const tbody = card.querySelector('tbody')
+    function load() {
+      const ids = dep === '0' ? 'AND e.department_id IS NULL AND e.section_id IS NULL'
+        : dep ? `AND (e.department_id IN (${UI.deptIds(+dep)}) OR e.section_id IN (${UI.deptIds(+dep)}))` : ''
+      rows = DB.all(`SELECT e.* FROM employees e WHERE 1 = 1 ${ids} ORDER BY CAST(e.code AS INTEGER), e.code`)
+      draw()
     }
-
-    function fill(r) {
-      form.querySelectorAll('[data-f]').forEach((i) => { if (i.type === 'checkbox') i.checked = !!r?.[i.dataset.f]; else i.value = r?.[i.dataset.f] ?? '' })
+    const shown = () => {
+      const s = q.toLowerCase()
+      return !s ? rows : rows.filter((r) => [r.code, r.name_ar, r.name_en].some((v) => String(v ?? '').toLowerCase().includes(s)))
     }
-    function select(r) {
-      current = r
-      tbody.querySelectorAll('tr').forEach((x) => x.classList.toggle('current', !!r && x.dataset.id === String(r.id)))
-      fill(r)
+    const rowHtml = (r) => {
+      const x = I(r)
+      return `<tr data-id="${r.id}"><td>${UI.esc(r.code)}</td><td><span class="apex-link">${UI.esc(r.name_ar)}</span></td><td dir="ltr" style="text-align:right">${UI.esc(r.name_en)}</td><td>${UI.esc(x.job)}</td><td>${UI.esc(x.dep)}</td><td>${UI.esc(x.sec)}</td><td>${UI.esc(x.shift)}</td><td>${UI.esc(r.status)}</td>
+        <td class="apex-col-actions"><div class="row-acts">${can('edit') ? `<button type="button" class="apex-icon-edit" data-a="edit" title="تعديل" aria-label="تعديل">${ic('pencil')}</button>` : ''}${can('del') ? `<button type="button" class="apex-icon-delete" data-a="del" title="حذف" aria-label="حذف">${ic('trash-2')}</button>` : ''}${can('edit') ? `<button type="button" class="apex-icon-more" data-a="move" title="نقل الموظف الى قسم اخر" aria-label="نقل الموظف الى قسم اخر">${ic('ellipsis-vertical')}</button>` : ''}</div></td></tr>`
     }
-    function load(keepCode = current?.code) {
-      const like = `%${q}%`
-      const rows = DB.all(`SELECT e.* FROM employees e
-        WHERE (? = '' OR e.code LIKE ? OR e.name_ar LIKE ? OR e.name_en LIKE ?) ${dep === 0 ? 'AND e.department_id IS NULL AND e.section_id IS NULL'
-          : dep ? `AND (e.department_id IN (${UI.deptIds(dep)}) OR e.section_id IN (${UI.deptIds(dep)}))` : ''}
-        ORDER BY CAST(e.code AS INTEGER), e.code`, [q, like, like, like])
-      tbody.innerHTML = ''
-      for (const r of rows) {
-        const tr = UI.el(`<tr data-id="${r.id}"><td class="sel"></td><td class="center">${UI.esc(r.code)}</td><td>${UI.esc(r.name_ar)}</td><td dir="ltr" style="text-align:right">${UI.esc(r.name_en)}</td></tr>`)
-        tr.addEventListener('mousedown', () => select(r))
-        tr.addEventListener('dblclick', () => openEmployeeForm(r, load))
-        tr.addEventListener('contextmenu', (ev) => { ev.preventDefault(); select(r); empMenu(ev, r) })
-        tbody.appendChild(tr)
-      }
-      select(rows.find((r) => r.code === keepCode) || null)
+    const allTable = () => {
+      const t = card.querySelector('table').cloneNode(true)
+      t.querySelector('tbody').innerHTML = shown().map(rowHtml).join('')
+      return t
     }
-    async function save() {
-      // as in Apex, an employee added here has no hire date (every day counts); the full form can set one
-      const v = { ...(current || { status: 'نشط', religion: '', ...placement() }), ...values() }
-      const code = await saveEmployee(current, v)
-      if (code) load(code)
+    function draw() {
+      const list = shown()
+      const pageCount = Math.max(1, Math.ceil(list.length / size))
+      page = Math.min(page, pageCount)
+      const from = (page - 1) * size
+      tbody.innerHTML = list.slice(from, from + size).map(rowHtml).join('') || `<tr><td class="empty" colspan="9">${UI.emptyState(rows.length ? undefined : 'لا يوجد موظفون')}</td></tr>`
+      const pager = card.querySelector('.pager')
+      pager.innerHTML = ''
+      if (list.length > 5) pager.append(UI.pagination({ page, pageCount, pageSize: size, onPage: (p) => { page = p; draw() }, onSize: (n) => { size = n; page = 1; draw() } }))
     }
-    const setPanel = form.querySelector('.emp-set')
-    form.querySelector('#emp-settings').onclick = () => { setPanel.hidden = !setPanel.hidden }
-    setPanel.querySelector('.es-x').onclick = () => { setPanel.hidden = true }
-    async function search() {
-      const s = await UI.dialog({ head: 'بحث', width: 360,
-        bodyHtml: `<div class="fields" style="grid-template-columns:110px 1fr"><label>الكود أو الاسم</label><input type="text" id="es-q" value="${UI.esc(q)}"></div>`,
-        buttons: [{ label: 'موافق', icon: 'ok', onClick: (d) => d.close(d.root.querySelector('#es-q').value.trim()) }, { label: 'الغاء', icon: 'cancel', onClick: (d) => d.close(null) }] })
-      if (s === null) return
-      q = s
-      load()
+    // a new employee joins the department / section chosen in the filter
+    function add() {
+      const d = +dep > 0 && DB.one('SELECT id, parent_id FROM departments WHERE id = ?', [+dep])
+      openEmployeeForm(null, load, d ? (d.parent_id ? { department_id: d.parent_id, section_id: d.id } : { department_id: d.id }) : {})
     }
-
-    function empMenu(ev, r) {
-      document.querySelector('.ctx-menu')?.remove()
-      const m = UI.el('<div class="ctx-menu"><button>نقل الموظف الى قسم اخر</button></div>')
-      Object.assign(m.style, { left: ev.clientX + 'px', top: ev.clientY + 'px' })
-      m.querySelector('button').onclick = () => { m.remove(); moveEmployee(r) }
-      document.body.appendChild(m)
-      setTimeout(() => document.addEventListener('mousedown', function off(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener('mousedown', off) } }), 0)
-    }
+    tbody.addEventListener('click', (e) => {
+      const a = e.target.closest('button')?.dataset.a, r = rows.find((x) => String(x.id) === e.target.closest('tr[data-id]')?.dataset.id)
+      if (!a || !r) return
+      if (a === 'edit') openEmployeeForm(r, load)
+      if (a === 'del') remove(r)
+      if (a === 'move') moveEmployee(r)
+    })
+    tbody.addEventListener('dblclick', (e) => {
+      const r = rows.find((x) => String(x.id) === e.target.closest('tr[data-id]')?.dataset.id)
+      if (r && !e.target.closest('button') && can('edit')) openEmployeeForm(r, load)
+    })
     async function moveEmployee(r) {
       if (WebSync.blocks('employees')) return
-      if (!Perm.can(win.permKey, 'edit')) return UI.message('غير مصرح لك بهذا الإجراء')
       let picked = null
-      const pending = UI.dialog({ head: 'الأقسام والإدارات', width: 320, bodyHtml: '<div id="mv-tree"></div>',
+      const pending = UI.dialog({ head: 'نقل الموظف الى قسم اخر', width: 480, cls: 'apex-dlg', bodyHtml: '<div id="mv-tree"></div>',
         buttons: [{ label: 'موافق', icon: 'ok', onClick: (d) => (picked ? d.close(true) : d.error('اختر القسم أو الإدارة')) }, { label: 'الغاء', icon: 'cancel', onClick: (d) => d.close(false) }] })
       document.querySelector('#mv-tree').appendChild(UI.deptTree((id) => { picked = id }, { title: 'الأقسام والإدارات', apex: true, icons: true }))
       if (!(await pending)) return
@@ -121,22 +82,18 @@ function openEmployees() {
       await DB.flush()
       load()
     }
-    async function remove() {
+    async function remove(r) {
       if (WebSync.blocks('employees')) return
-      if (!current) return UI.message('اختر موظفاً')
-      const ok = await UI.dialog({ head: 'تأكيد الحذف', bodyHtml: `<div>حذف الموظف «${UI.esc(current.name_ar)}»؟</div>`, width: 340,
-        buttons: [{ label: 'نعم', icon: 'ok', onClick: (d) => d.close(true) }, { label: 'لا', icon: 'cancel', onClick: (d) => d.close(false) }] })
-      if (!ok) return
-      if (DB.one('SELECT 1 FROM punches WHERE emp_code = ? LIMIT 1', [current.code]) || DB.one('SELECT 1 FROM posted_attendance WHERE employee_id = ? LIMIT 1', [current.id]))
-        return UI.message('للموظف حركات مسجلة — غيّر حالته إلى «منتهي»، أو استخدم «الغاء جميع بيانات الموظف بالنظام»')
-      DB.run('DELETE FROM employee_shifts WHERE employee_id = ?', [current.id])
-      DB.run('DELETE FROM employees WHERE id = ?', [current.id])
-      DB.audit('حذف موظف', `${current.code} — ${current.name_ar}`)
+      if (!(await UI.confirm(`حذف الموظف «${r.name_ar}»؟`, 'تأكيد الحذف'))) return
+      if (DB.one('SELECT 1 FROM punches WHERE emp_code = ? LIMIT 1', [r.code]) || DB.one('SELECT 1 FROM posted_attendance WHERE employee_id = ? LIMIT 1', [r.id]))
+        return UI.message('للموظف حركات مسجلة — غيّر حالته إلى «منتهي»، أو استخدم «الغاء بيانات موظف»')
+      DB.run('DELETE FROM employee_shifts WHERE employee_id = ?', [r.id])
+      DB.run('DELETE FROM employees WHERE id = ?', [r.id])
+      DB.audit('حذف موظف', `${r.code} — ${r.name_ar}`)
       await DB.flush()
       load()
     }
-    if (DB.one('SELECT 1 FROM departments LIMIT 1') || unplaced) tree.selectFirst()
-    else load()
+    load()
   })
 }
 
@@ -148,7 +105,7 @@ const EMP_SET_WARNING = 'في حاله التعديلات علي دوام الم
 // the full employee form (Apex «الاعدادات»); `prefill` seeds a new employee from the list window
 function openEmployeeForm(emp, onSaved, prefill = {}) {
   const isNew = !emp
-  const e = emp ? { ...emp } : { status: 'نشط', hire_date: new Date().toISOString().slice(0, 10), ...Object.fromEntries(Object.entries(prefill).filter(([, v]) => v !== '' && v != null)) }
+  const e = emp ? { ...emp } : { status: 'نشط', ...Object.fromEntries(Object.entries(prefill).filter(([, v]) => v !== '' && v != null)) }
   const sel = (field, options) => `<select data-f="${field}"><option value=""></option>${options.map(([v, l]) =>
     `<option value="${UI.esc(v)}" ${String(v) === String(e[field] ?? '') ? 'selected' : ''}>${UI.esc(l)}</option>`).join('')}</select>`
   const txt = (field, attrs = '') => `<input type="text" data-f="${field}" value="${UI.esc(e[field] ?? '')}" ${attrs}>`
@@ -157,7 +114,7 @@ function openEmployeeForm(emp, onSaved, prefill = {}) {
   const deps = opts('departments', 'WHERE parent_id IS NULL OR parent_id = ""')()
   const secs = opts('departments', 'WHERE parent_id IS NOT NULL AND parent_id <> ""')()
 
-  UI.openWindow(`emp-${emp?.id || 'new'}`, isNew ? 'اضافة موظف' : `تعديل موظف — ${emp.name_ar}`, { width: 820, height: 520 }, (body, win) => {
+  UI.openWindow(`emp-${emp?.id || 'new'}`, isNew ? 'اضافة موظف' : `تعديل موظف — ${emp.name_ar}`, { width: 1000 }, (body, win) => {
     const bar = UI.toolbar([
       { key: 'save', label: 'حفظ', icon: 'save', onClick: save },
       { key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() },

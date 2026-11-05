@@ -140,6 +140,23 @@ const AutoRead = {
   },
 }
 
+// «الاعدادات العامة»: backup + restore, extra databases, the licence, the guide
+function openGeneralSettings() {
+  UI.openWindow('general-settings', 'الاعدادات العامة', { width: 1200 }, (body) => {
+    const card = (icon, title, text, acts) => `<div class="s-card"><h3>${ic(icon)}${title}</h3><p>${text}</p><div class="acts">${acts.map(([id, l, pri]) => `<button type="button" id="${id}" class="${pri ? 'btn-pri' : ''}">${l}</button>`).join('')}</div></div>`
+    const view = UI.el(`<div class="settings-cards">
+      ${card('database-backup', 'النسخ الاحتياطي', 'يأخذ البرنامج نسخة احتياطية تلقائية يومياً من ملف قاعدة البيانات ويحتفظ بآخر 30 نسخة. يمكنك أخذ نسخة الآن وحفظها على فلاشة أو جهاز آخر.', [['gs-backup', 'إنشاء نسخة احتياطية', true]])}
+      ${card('rotate-ccw', 'استعادة قاعدة البيانات', 'استرجاع نسخة احتياطية سابقة (تلقائية أو محفوظة) مكان البيانات الحالية أو في قاعدة بيانات جديدة.', [['gs-restore', 'استعادة نسخة احتياطية']])}
+      ${card('database', 'قواعد البيانات', 'إنشاء قاعدة بيانات جديدة فارغة، تختارها لاحقاً من شاشة الدخول.', [['gs-createdb', 'انشاء قاعدة بيانات']])}
+      ${card('key-round', 'تسجيل المنتج', licence.ok ? `البرنامج مسجل (${UI.esc(licence.edition || '')}).` : 'البرنامج غير مسجل. أرسل كود الطلب للمورد وأدخل كود الترخيص الذي يصلك.', [['gs-register', 'تسجيل المنتج']])}
+      ${card('book-open', 'دليل الاستخدام', 'شرح خطوات تشغيل البرنامج وكل شاشاته.', [['gs-guide', 'فهرس المحتويات']])}
+    </div>`)
+    body.append(view)
+    const on = (id, fn) => { view.querySelector(`#${id}`).onclick = fn }
+    on('gs-backup', backupNow); on('gs-restore', () => openRestore()); on('gs-createdb', () => openCreateDb()); on('gs-register', () => openRegister()); on('gs-guide', () => openGuide())
+  })
+}
+
 // Apex «إنشاء نسخة إحتياطية من قاعدة البيانات»
 function openBackup() {
   UI.openWindow('backup', 'إنشاء نسخة إحتياطية من قاعدة البيانات', { width: 746, height: 300 }, (body, win) => {

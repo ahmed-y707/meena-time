@@ -10,27 +10,15 @@ const LIST_TYPES = [['job', 'الوظائف'], ['task', 'المهام'], ['relig
 const listOptions = (type) => () => DB.all('SELECT id, name_ar FROM lists WHERE list_type = ? ORDER BY name_ar', [type]).map((r) => [r.id, r.name_ar])
 const hhmm = (m) => `${String(Math.floor((m || 0) / 60)).padStart(2, '0')}:${String((m || 0) % 60).padStart(2, '0')}`
 
-function openLists() {
-  let type = 'job'
+const LIST_TITLES = { job: 'الوظائف', task: 'المهام', nationality: 'الجنسية', leave: 'انواع الاجازات', religion: 'الديانة', att_note: 'ملاحظات الحضور', permission: 'انواع الأذونات' }
+// each list type is its own page (the site's «الوظائف», «الجنسية», «انواع الاجازات»…)
+function openList(type) {
   openGridWindow({
-    id: 'lists', title: 'قوائم البرنامج', table: 'lists', orderBy: 'id', width: 950, height: 440,
-    buttons: ['new', 'save', 'undo', 'del', 'close'], idLabel: 'رقم البند', seqNo: true, // all list types share one table: number each list 1…n
-    help: 'اختر نوع القائمة من «نوع القائمة» ثم أدخل الاسم (عربي أو انجليزي) واضغط «حفظ».',
+    id: `list-${type}`, title: LIST_TITLES[type], table: 'lists', orderBy: 'id', seqNo: true, // all list types share one table: number each list 1…n
     scope: () => ({ where: 'list_type = ?', params: [type], fixed: { list_type: type } }),
-    caption: () => LIST_TYPES.find(([k]) => k === type)[1],
-    side: (ctx) => {
-      const el = UI.el(`<fieldset class="list-types"><legend>نوع القائمة</legend>${LIST_TYPES.map(([k, l]) => `<div class="lt ${k === type ? 'on' : ''}" data-k="${k}">${l}</div>`).join('')}</fieldset>`)
-      el.addEventListener('click', (e) => {
-        const t = e.target.closest('.lt'); if (!t) return
-        type = t.dataset.k
-        el.querySelectorAll('.lt').forEach((x) => x.classList.toggle('on', x === t))
-        ctx.reload()
-      })
-      return el
-    },
     columns: [
-      { field: 'name_ar', label: 'اسم البند عربي', required: true },
-      { field: 'name_en', label: 'اسم البند انجليزي', type: 'en' },
+      { field: 'name_ar', label: 'الاسم عربي', required: true },
+      { field: 'name_en', label: 'الاسم انجليزي', type: 'en' },
     ],
     beforeDelete: (r) => {
       if (type === 'religion') return DB.one('SELECT 1 FROM employees WHERE religion = ? LIMIT 1', [r.name_ar]) ? 'لا يمكن الحذف: مستخدم في بيانات الموظفين' : null
@@ -39,6 +27,7 @@ function openLists() {
     },
   })
 }
+const openLists = () => openList('job')
 
 // Apex «قوائم الأقسام والإدارات»: a tree (right) and the record (left). Viewing: the selected node's
 // data; «رئيسي» adds a إدارة, «جديد» a قسم under the selected إدارة (adding: only حفظ / إهمال);
@@ -275,16 +264,25 @@ function deviceNotReadable(d) {
   return null
 }
 function openDevices() {
-  UI.openWindow('devices', 'اعدادات الجهاز', { width: 840, height: 520 }, (body, win) => {
+  UI.openWindow('devices', 'الاجهزة', { width: 1200 }, (body, win) => {
     let cur = null
     const deps = () => DB.all('SELECT id, name_ar FROM departments ORDER BY name_ar')
     const bar = UI.toolbar([
       { key: 'new', label: 'جديد', icon: 'new', onClick: () => { edit({}); $('#dv-name').focus() } },
-      { key: 'del', label: 'حذف', icon: 'del', onClick: remove },
       { key: 'save', label: 'حفظ', icon: 'save', onClick: save },
-      { key: 'close', label: 'إغلاق', icon: 'close', onClick: () => win.close() },
+      { key: 'del', label: 'حذف', icon: 'del', onClick: remove },
+      { key: 'clock', label: 'مزامنة ساعة الجهاز', icon: 'clock', onClick: syncClock },
     ])
-    const view = UI.el(`<div class="dev-win"><fieldset><legend>إعدادات الجهاز</legend>
+    // two ways a device reaches this PC: it sends (ADMS, modern devices) or we read it (port 4370, older ones)
+    const push = UI.el(`<fieldset class="dev-push"><legend>الإرسال المباشر (الأجهزة الحديثة)</legend>
+      <div class="warn" id="ds-moved" hidden>${ic('triangle-alert')}<span id="ds-moved-t"></span><button type="button" id="ds-confirm">تم تعديل الأجهزة</button></div>
+      <p class="hint">في الجهاز: «إعدادات السحابة / ADMS» ← اكتب عنوان هذا الكمبيوتر والمنفذ بالأسفل. يرسل الجهاز كل بصمة لحظة تسجيلها، ولا تتكرر البصمة عند إعادة الإرسال.</p>
+      <div class="addr"><span class="kv">عنوان هذا الكمبيوتر: <b id="ds-ip">—</b></span>
+        <label class="kv">المنفذ <input type="text" id="ds-port" data-num dir="ltr" maxlength="5"></label><button type="button" id="ds-save">حفظ المنفذ</button>
+        <span class="st" id="ds-state"></span></div>
+      <div class="grid-wrap"><table class="grid" id="ds-list"><thead><tr><th>الرقم التسلسلي</th><th>عنوان الجهاز</th><th>آخر اتصال</th><th>آخر بصمة</th><th>بصمات اليوم</th><th class="apex-col-actions"></th></tr></thead><tbody></tbody></table></div></fieldset>`)
+    body.append(push)
+    const view = UI.el(`<div class="dev-win"><fieldset class="dev-form"><legend>السحب من الجهاز (المنفذ 4370 — الأجهزة القديمة)</legend>
       <div class="fields dv-main"><label>كود الجهاز <b class="req">*</b></label><input type="text" id="dv-id" readonly>
         <label>القسم</label><div class="dv-dep"><input type="text" id="dv-dep" readonly><button id="dv-pick" title="اختيار القسم">…</button></div>
         <label>اسم الجهاز <b class="req">*</b></label><input type="text" id="dv-name">
@@ -368,6 +366,46 @@ function openDevices() {
       load(null)
     }
     load(null)
+
+    // the receiver's state, every few seconds while this page is open
+    const P = (s) => push.querySelector(s)
+    function showGate(st) {
+      if (!push.isConnected) return
+      const r = st.receiver
+      P('#ds-ip').textContent = r.ips[0] || 'غير متصل بالشبكة'
+      if (document.activeElement !== P('#ds-port')) P('#ds-port').value = r.port ?? ''
+      const state = P('#ds-state')
+      state.className = `st ${r.listening ? 'on' : 'off'}`
+      state.textContent = r.listening ? 'جاهز لاستقبال البصمات' : r.error || 'الاستقبال متوقف'
+      P('#ds-moved').hidden = !r.moved
+      P('#ds-moved-t').textContent = r.moved ? `تغيّر عنوان هذا الكمبيوتر من ${r.ip} إلى ${r.ips[0]} — عدّل العنوان في كل جهاز حتى تصل البصمات` : ''
+      const when = (t) => (t ? new Date(t).toLocaleTimeString('en-GB') : '')
+      P('#ds-list tbody').innerHTML = st.devices.map((d) => `<tr data-sn="${UI.esc(d.sn)}"><td dir="ltr" style="text-align:right">${UI.esc(d.sn)}</td><td dir="ltr" style="text-align:right">${UI.esc(d.ip)}</td><td dir="ltr" style="text-align:right">${when(d.seen)}</td><td dir="ltr" style="text-align:right">${UI.esc(d.last || '')}</td><td>${d.today}</td>
+        <td class="apex-col-actions"><div class="row-acts"><button type="button" class="row-btn" data-clock title="مزامنة ساعة الجهاز">${ic('clock')}<span>مزامنة ساعة الجهاز</span></button></div></td></tr>`).join('')
+        || '<tr><td colspan="6" class="empty">لم يتصل أي جهاز بعد</td></tr>'
+    }
+    const refresh = async () => { if (window.bridge.gateStatus) showGate(await window.bridge.gateStatus()) }
+    P('#ds-save').onclick = async () => {
+      const n = +P('#ds-port').value
+      if (!(n >= 1 && n <= 65535)) return UI.message('المنفذ: رقم من 1 إلى 65535')
+      showGate(await window.bridge.gateSettings({ port: n }))
+      UI.message('تم الحفظ — اكتب المنفذ الجديد في الأجهزة')
+    }
+    P('#ds-confirm').onclick = async () => showGate(await window.bridge.gateSettings({ confirmIp: true }))
+    P('#ds-list').addEventListener('click', async (e) => {
+      const tr = e.target.closest('[data-clock]')?.closest('tr')
+      if (!tr) return
+      await window.bridge.gateClock(tr.dataset.sn)
+      UI.message('سيتم ضبط ساعة الجهاز عند اتصاله التالي (خلال ثوانٍ)')
+    })
+    refresh()
+    const timer = setInterval(() => { if (push.isConnected) refresh(); else clearInterval(timer) }, 5000)
+    async function syncClock() {
+      if (!cur?.id) return UI.message('حدد الجهاز من الجدول')
+      if (cur.conn_type !== 'TCP / IP' || !cur.ip) return UI.message('مزامنة الساعة تتم عبر الشبكة: الجهاز يجب أن يكون TCP / IP')
+      const r = await window.bridge.deviceClock({ ip: cur.ip, port: cur.port, key: cur.comm_key })
+      UI.message(r.ok ? `تم ضبط ساعة الجهاز «${cur.name}» على وقت هذا الكمبيوتر` : r.error)
+    }
   })
 }
 

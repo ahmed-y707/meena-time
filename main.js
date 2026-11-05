@@ -5,13 +5,15 @@ const path = require('path')
 const fs = require('fs')
 const { requestCode, verifyLicence } = require('./lib/license')
 const { createGuard } = require('./lib/guard')
+const { createGate } = require('./lib/gate')
 
 // Demo: own data folder, starts with the test data, all features unlocked.
 // Installer: demo/demo-data.sqlite is bundled by tools/build-demo.sh (normal
 // builds have no demo/). From source: `npm run demo` (= electron . --demo).
 const DEMO_DB = process.argv.includes('--demo') ? path.join(__dirname, 'tools', 'demo-data.sqlite') : path.join(__dirname, 'demo', 'demo-data.sqlite')
 const DEMO = fs.existsSync(DEMO_DB)
-if (DEMO) app.setPath('userData', path.join(app.getPath('appData'), 'Meena Time Demo'))
+// its own data folder, apart from a Meena Time / Apex-style copy on the same PC
+if (!process.argv.some((a) => a.startsWith('--user-data-dir'))) app.setPath('userData', path.join(app.getPath('appData'), DEMO ? 'Masar Time Demo' : 'Masar Time'))
 const dataDir = () => app.getPath('userData')
 // one database for all years (v1.0); `name` = 'main', a 4-digit year for a v0.x per-year file, or an
 // extra database made from «انشاء قاعدة بيانات» (Apex keeps several: «قاعدة البيانات الحالية/الجديدة»)
@@ -29,22 +31,22 @@ const TRIAL_BUILD = path.join(__dirname, 'trial-build.json')
 const guard = createGuard({ dataDir, licencePath, buildTrial: fs.existsSync(TRIAL_BUILD) ? (JSON.parse(fs.readFileSync(TRIAL_BUILD, 'utf8')).token || 'invalid') : null })
 app.whenReady().then(() => { guard.checkNetTime(); setInterval(() => guard.checkNetTime(), 30 * 60e3) })
 
+let mainWin = null
 function createWindow() {
-  const win = new BrowserWindow({
+  const win = (mainWin = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 640,
-    title: 'Meena Time',
-    backgroundColor: '#3fc1e9',
+    title: 'Masar Time',
+    backgroundColor: '#edf1f2',
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
-  })
-  win.maximize() // Apex Time opens maximized
-  // a bigger, «zoomed-in» program: 125 % where the screen is wide enough for the widest windows
-  // (≈1110 px); Ctrl + / Ctrl − / Ctrl 0 adjust it and the choice is kept
+  }))
+  win.maximize()
+  // 115 % on wide screens, as msar-erp.com renders (tenant uiScale); Ctrl + / Ctrl − / Ctrl 0 adjust it and the choice is kept
   const zoomFile = path.join(dataDir(), 'zoom.json')
-  const fit = Math.max(1, Math.min(1.25, screen.getPrimaryDisplay().workAreaSize.width / 1110))
+  const fit = screen.getPrimaryDisplay().workAreaSize.width >= 1536 ? 1.15 : 1
   let zoom = fit
   try { zoom = JSON.parse(fs.readFileSync(zoomFile, 'utf8')).zoom || fit } catch {}
   const setZoom = (z) => { zoom = Math.round(Math.min(2, Math.max(0.6, z)) * 100) / 100; win.webContents.setZoomFactor(zoom) }
@@ -59,7 +61,7 @@ function createWindow() {
     e.preventDefault()
     try { fs.writeFileSync(zoomFile, JSON.stringify({ zoom })) } catch {}
   })
-  Menu.setApplicationMenu(null) // the app draws its own Arabic menu bar
+  Menu.setApplicationMenu(null) // the app draws its own sidebar
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
 }
 
@@ -137,6 +139,21 @@ ipcMain.handle('device:read', async (_e, { ip, port }) => {
     return { ok: false, error: `تعذّر الاتصال بالجهاز ${ip}:${port || 4370} — تأكد أن الجهاز يعمل وعلى نفس الشبكة` }
   } finally {
     try { await zk.disconnect() } catch {}
+  }
+})
+
+// «مزامنة ساعة الجهاز» for a device read over the network (port 4370)
+ipcMain.handle('device:clock', async (_e, { ip, port, key }) => {
+  const { ZK } = require('./lib/zk')
+  const zk = new ZK(ip, port || 4370)
+  try {
+    await zk.connect(key || 0)
+    await zk.setTime()
+    return { ok: true }
+  } catch {
+    return { ok: false, error: `تعذّر الاتصال بالجهاز ${ip}:${port || 4370} — تأكد أن الجهاز يعمل وعلى نفس الشبكة` }
+  } finally {
+    await zk.close().catch(() => {})
   }
 })
 
@@ -277,5 +294,8 @@ app.whenReady().then(() => {
   }
   dailyBackup()
   createWindow()
+  gate = createGate({ dir: path.join(dataDir(), 'gate'), ipcMain, window: () => mainWin })
 })
+let gate = null
+app.on('before-quit', () => { try { gate?.stop() } catch {} })
 app.on('window-all-closed', () => app.quit())

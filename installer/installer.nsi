@@ -1,22 +1,22 @@
-; Meena Time — Windows installer (built on Linux with native makensis).
-; Per-user install (no admin rights needed), Arabic UI, desktop + Start menu
-; shortcuts, uninstaller. The customer's data lives in %APPDATA%\Meena Time
+; Masar Time — Windows installer (built on Linux with native makensis).
+; Admin install: devices on the network push punches to this PC, so Windows Firewall gets an
+; inbound rule for the receiving port. Arabic UI, desktop + Start menu shortcuts, uninstaller. The customer's data lives in %APPDATA%\Masar Time
 ; and is NOT removed on uninstall.
 Unicode true
 SetCompressor /SOLID lzma
-RequestExecutionLevel user
+RequestExecutionLevel admin
 
-!define APPNAME "Meena Time"
+!define APPNAME "Masar Time"
 !ifndef VERSION
   !define VERSION "1.0.0"
 !endif
 !define SRC "..\dist\win-unpacked"
-!define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\MeenaTime"
+!define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\MasarTime"
 
 Name "${APPNAME}"
-OutFile "..\dist\Meena-Time-Setup-${VERSION}.exe"
-InstallDir "$LOCALAPPDATA\Programs\${APPNAME}"
-InstallDirRegKey HKCU "Software\${APPNAME}" "InstallDir"
+OutFile "..\dist\Masar-Time-Setup-${VERSION}.exe"
+InstallDir "$PROGRAMFILES64\${APPNAME}"
+InstallDirRegKey HKLM "Software\${APPNAME}" "InstallDir"
 BrandingText "${APPNAME} ${VERSION}"
 
 !include "MUI2.nsh"
@@ -36,9 +36,9 @@ BrandingText "${APPNAME} ${VERSION}"
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "${APPNAME}"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "${VERSION}"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "Meena"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "Masar"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "${APPNAME} Setup"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "Meena"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "Masar"
 
 Section "Install"
   ; close a running copy so its files can be replaced on upgrade
@@ -47,25 +47,28 @@ Section "Install"
   File /r "${SRC}\*.*"
   File "/oname=$INSTDIR\app.ico" "..\build\icon.ico"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="${APPNAME}"'
+  nsExec::Exec 'netsh advfirewall firewall add rule name="${APPNAME}" dir=in action=allow program="$INSTDIR\${APPNAME}.exe" enable=yes profile=any'
   CreateDirectory "$SMPROGRAMS\${APPNAME}"
   CreateShortcut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\${APPNAME}.exe" "" "$INSTDIR\app.ico"
   CreateShortcut "$SMPROGRAMS\${APPNAME}\إزالة ${APPNAME}.lnk" "$INSTDIR\Uninstall.exe"
   CreateShortcut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\${APPNAME}.exe" "" "$INSTDIR\app.ico"
-  WriteRegStr HKCU "Software\${APPNAME}" "InstallDir" "$INSTDIR"
-  WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "${APPNAME}"
-  WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "Meena"
-  WriteRegStr HKCU "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\app.ico"
-  WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-  WriteRegDWORD HKCU "${UNINST_KEY}" "NoModify" 1
-  WriteRegDWORD HKCU "${UNINST_KEY}" "NoRepair" 1
+  WriteRegStr HKLM "Software\${APPNAME}" "InstallDir" "$INSTDIR"
+  WriteRegStr HKLM "${UNINST_KEY}" "DisplayName" "${APPNAME}"
+  WriteRegStr HKLM "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKLM "${UNINST_KEY}" "Publisher" "Masar"
+  WriteRegStr HKLM "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\app.ico"
+  WriteRegStr HKLM "${UNINST_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+  WriteRegDWORD HKLM "${UNINST_KEY}" "NoModify" 1
+  WriteRegDWORD HKLM "${UNINST_KEY}" "NoRepair" 1
 SectionEnd
 
 Section "Uninstall"
   nsExec::Exec 'taskkill /F /IM "${APPNAME}.exe"'
+  nsExec::Exec 'netsh advfirewall firewall delete rule name="${APPNAME}"'
   Delete "$DESKTOP\${APPNAME}.lnk"
   RMDir /r "$SMPROGRAMS\${APPNAME}"
   RMDir /r "$INSTDIR"
-  DeleteRegKey HKCU "${UNINST_KEY}"
-  DeleteRegKey HKCU "Software\${APPNAME}"
+  DeleteRegKey HKLM "${UNINST_KEY}"
+  DeleteRegKey HKLM "Software\${APPNAME}"
 SectionEnd
