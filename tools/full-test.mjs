@@ -67,7 +67,7 @@ const dlgFill = async (values) => {
 const addRow = async (w, values) => { await btn(w, 'جديد').click(); await p.waitForTimeout(150); await dlgFill(values); await dlgSave(); return okMsg() }
 
 // ── 1. login ──────────────────────────────────────────────
-await p.waitForSelector('text=تسجيل الدخول', { timeout: 20000 })
+await p.waitForSelector('.login-page #pass', { timeout: 20000 })
 await snap('login')
 check('login: Masar logo + photo, works offline (no remote assets)', (await p.locator('.login-logo').count()) === 1 && (await p.locator('.login-photo img').count()) === 1)
 check('login: single database shown', (await p.locator('#year option').count()) === 1)
@@ -631,8 +631,8 @@ check('register: request code format', /^[0-9A-F]{4}(-[0-9A-F]{4}){4}$/.test(req
 await p.locator('#lic').fill('garbage.Gold'); await p.locator('.dlg').getByRole('button', { name: 'تسجيل' }).click(); await p.waitForTimeout(200)
 check('register: invalid licence rejected', /غير صحيح/.test(await p.locator('.dlg .err').textContent()))
 const lic = execFileSync('node', [`${ROOT}/tools/keygen.js`, req, 'Gold']).toString().trim()
-await p.locator('#lic').fill(lic); await p.locator('.dlg').getByRole('button', { name: 'تسجيل' }).click(); await p.waitForTimeout(300)
-check('register: valid licence accepted', /تم تسجيل البرنامج/.test(await okMsg()))
+await p.locator('#lic').fill(lic); await p.locator('.dlg').getByRole('button', { name: 'تسجيل' }).click(); await p.locator('.dlg.msg').waitFor({ timeout: 5000 })
+{ const m = await okMsg(); check('register: valid licence accepted', /تم تسجيل البرنامج/.test(m), m) }
 check('register: notice gone from the banner', !/تجريبية/.test(await p.locator('#banner').textContent()))
 await menu('التقارير', 'الغياب خلال فترة'); check('registered: previously locked report opens', await repWin('الغياب خلال فترة').isVisible()); await closeWin(repWin('الغياب خلال فترة'))
 
@@ -645,10 +645,11 @@ const openGroupTimes = async (name) => {
 // new shift groups: split, night (ends the next day), open
 await menu('البيانات الأساسية', 'مواعيد العمل'); w = win('أوقات العمل')
 for (const g of [{ name_ar: 'مقسم' }, { name_ar: 'ليلي' }, { name_ar: 'مفتوح', open_shift: 1 }]) {
-  const r = lastRow(w)
-  await r.locator('[data-f=name_ar]').fill(g.name_ar)
-  if (g.open_shift) await r.locator('[data-f=open_shift]').check()
-  await gsave(w)
+  await btn(w, 'جديد').click(); await p.waitForTimeout(120)
+  const d = p.locator('.dlg-backdrop').last()
+  await d.locator('[data-f=name_ar]').fill(g.name_ar)
+  if (g.open_shift) await d.locator('[data-f=open_shift]').check()
+  await dlgSave(); await okMsg()
 }
 check('shift groups: Apex columns only (no rotating / start date)', (await w.locator('thead th').allTextContents()).map((x) => x.trim()).filter(Boolean).join('|') === '#|الاسم العربي|الاسم الأجنبي|الإجمالي|دوام مفتوح')
 await closeWin(w)
@@ -801,7 +802,7 @@ await menu('الإجراءات', 'الغاء ترحيل'); w = win('الغاء �
 check('unpost: the day is recomputed with the current times (08:30 vs 07:00 → 01:30 late)', cell('1001:2026-09-20', 4) === '01:30', D['1001:2026-09-20']?.join('|'))
 await closeWin(rw)
 // permissions: user hr may only open «الموظفين»
-await menu('الاعدادات', 'صلاحيات المستخدمين', 'اعدادات المستخدمين'); w = win('صلاحيات المستخدمين')
+await menu('الاعدادات', 'صلاحيات المستخدمين', 'اعدادات المستخدمين'); w = win('الصلاحيات')
 await w.locator('#ro-list tr', { hasText: 'موارد بشرية' }).click()
 await w.locator('.screens tr[data-key="البيانات الأساسية/الموظفون"] input[data-a=print]').check(); await snap('v2-permissions')
 check('roles: permissions saved under the old menu spellings carry over', await p.evaluate(() => {
@@ -894,15 +895,15 @@ check('restore: backup restored', /تم استرجاع/.test(await okMsg()))
 await menu('البيانات الأساسية', 'المشاريع'); w = win('المشاريع')
 check('restore: data is back to the backup (temporary project gone)', (await rowCount(w)) === 1); await closeWin(w)
 // logout returns to the login screen
-await menu('ملف', 'تسجيل الخروج')
-check('logout: back to the login screen', await p.locator('text=شاشة الدخول').waitFor({ timeout: 10000 }).then(() => true, () => false))
-await p.locator('#pass').fill('admin1'); await p.locator('.dlg').getByRole('button', { name: 'موافق' }).click(); await p.waitForTimeout(600)
+await p.locator('#tb-user-btn').click(); await p.locator('[data-u=logout]').click()
+check('logout: back to the login screen', await p.locator('.login-page #pass').waitFor({ timeout: 10000 }).then(() => true, () => false))
+await p.locator('#pass').fill('admin1'); await loginBtn().click(); await p.waitForTimeout(600)
 check('logout: login again', await p.locator('#home').isVisible())
 
 // ── 9. restart: data persisted, password changed, licence kept ──
 await app.close()
 const app2 = await electron.launch({ executablePath: `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT })
-const p2 = await app2.firstWindow(); await p2.waitForSelector('text=تسجيل الدخول')
+const p2 = await app2.firstWindow(); await p2.waitForSelector('.login-page #pass')
 await loginBtn(p2).click(); await p2.waitForTimeout(300)
 check('restart: old empty password no longer works', /غير صحيحة/.test(await p2.locator('.dlg .err').textContent()))
 await p2.locator('#user').fill('hr'); await p2.locator('#pass').fill('1234'); await loginBtn(p2).click(); await p2.waitForTimeout(700)
@@ -912,11 +913,11 @@ await openPage(p2, 'الموظفين')
 { const ew = p2.locator('.win[data-win=employees]')
   check('permissions: view+print only → no «اضافة», no pencil / trash, «تصدير» on', (await ew.locator('.toolbar button[data-key=new]').first().isDisabled()) && (await ew.locator('[data-a=edit], [data-a=del]').count()) === 0 && !(await ew.locator('.tb-btn[data-key=print]').isDisabled()))
   await ew.evaluate((el) => { UI.close(el.dataset.win) }) }
-await p2.evaluate(() => Nav.go('البيانات الاساسية', ['أوقات العمل', 'البيانات الأساسية/مواعيد العمل', () => openShiftGroups()])); await p2.waitForTimeout(200)
+await p2.evaluate(() => { Nav.go('البيانات الاساسية', ['أوقات العمل', 'البيانات الأساسية/مواعيد العمل', () => openShiftGroups()]) }); await p2.waitForTimeout(200)
 check('permissions: a screen without permission is refused', /ليس لديك صلاحية/.test(await p2.locator('.dlg-backdrop .body').last().textContent()))
 await app2.close()
 const app3 = await electron.launch({ executablePath: `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT })
-const p3 = await app3.firstWindow(); await p3.waitForSelector('text=تسجيل الدخول')
+const p3 = await app3.firstWindow(); await p3.waitForSelector('.login-page #pass')
 check('login remembers the last user', (await p3.locator('#user').inputValue()) === 'hr')
 await p3.locator('#user').fill('أ'); await p3.locator('#pass').fill('admin1'); await loginBtn(p3).click(); await p3.waitForTimeout(700)
 check('restart: login with new password', await p3.locator('#home').isVisible())
