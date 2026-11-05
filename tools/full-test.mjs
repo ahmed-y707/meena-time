@@ -861,12 +861,7 @@ await snap('v2-audit'); await closeWin(w)
   const ok = await p.evaluate(() => window.bridge.deviceClock({ ip: '127.0.0.1', port: 14370, key: 0 }))
   check('pull device: clock set over port 4370', ok.ok && zk.state.commands.includes(202), JSON.stringify(ok))
   zk.server.close()
-  // the address changed since the devices were set up
-  const cfg = `${UD}/gate/gate.json`
   await closeWin(w)
-  fs.writeFileSync(cfg, JSON.stringify({ receiver: true, port: 18081, ip: '10.254.254.254' }))
-  await p.evaluate(async () => { await window.bridge.gateSettings({}) })
-  check('gate file: keeps the port', JSON.parse(fs.readFileSync(cfg, 'utf8')).port === 18081)
 }
 // the daily copy + restore are on «الاعدادات العامة»
 await openPage(p, 'الاعدادات العامة'); w = win('الاعدادات العامة'); await snap('general-settings')
@@ -924,8 +919,25 @@ check('restart: login with new password', await p3.locator('#home').isVisible())
 check('restart: licence kept', await p3.evaluate(() => licence.ok) && !/تجريبية/.test(await p3.locator('#banner').textContent()))
 await openPage(p3, 'الموظفين')
 check('restart: employees persisted (5 after purge)', (await p3.locator('.win tbody tr[data-id]').count()) === 5)
-check('restart: automatic daily backup created', fs.existsSync(`${UD}/backups`) && fs.readdirSync(`${UD}/backups`).length >= 1)
+check('restart: the receiving port is kept', JSON.parse(fs.readFileSync(`${UD}/gate/gate.json`, 'utf8')).port === 18081)
+// the PC's address no longer matches what the devices were given (this run wrote it down when the page first opened)
+await p3.locator('.win tbody').first().waitFor()
 await app3.close()
+{ const cfg = `${UD}/gate/gate.json`; fs.writeFileSync(cfg, JSON.stringify({ ...JSON.parse(fs.readFileSync(cfg, 'utf8')), ip: '10.254.254.254' })) }
+const app4 = await electron.launch({ executablePath: `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT })
+const p4 = await app4.firstWindow(); await p4.waitForSelector('.login-page #pass')
+await p4.locator('#user').fill('أ'); await p4.locator('#pass').fill('admin1'); await loginBtn(p4).click(); await p4.waitForTimeout(700)
+await openPage(p4, 'الاجهزة'); await p4.waitForTimeout(500)
+{
+  const ips = await p4.locator('#ds-ip').textContent()
+  if (/\d+\.\d+/.test(ips)) {
+    check('devices page: warns when this PC\'s address changed', (await p4.locator('#ds-moved').isVisible()) && /10\.254\.254\.254/.test(await p4.locator('#ds-moved-t').textContent()), await p4.locator('#ds-moved-t').textContent())
+    await p4.locator('#ds-confirm').click(); await p4.waitForTimeout(300)
+    check('devices page: the warning goes once the devices are updated', await p4.locator('#ds-moved').isHidden())
+  }
+}
+check('restart: automatic daily backup created', fs.existsSync(`${UD}/backups`) && fs.readdirSync(`${UD}/backups`).length >= 1)
+await app4.close()
 
 check('no page errors during the whole run', errs.length === 0, errs.slice(0, 3).join(' || '))
 fs.rmSync(UD, { recursive: true, force: true }) // the TEST- data goes with the session
