@@ -95,7 +95,8 @@ const Nav = (window.Nav = {
     this.section = sectionLabel
     this.mark(label)
     if (!Perm.can(key)) return UI.message('ليس لديك صلاحية لهذه الشاشة')
-    Perm.run(key, fn)
+    this.label = label
+    try { Perm.run(key, fn) } finally { this.label = null }
   },
   async home() {
     if (await this.leave()) this.mark(null)

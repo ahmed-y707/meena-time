@@ -1,4 +1,4 @@
-const TOOL_LABEL = { new: 'اضافة', print: 'الطباعة', del: 'حذف' }
+const TOOL_LABEL = { new: 'اضافة', print: 'الطباعة' }
 // Apex Time permissions: a screen key is "<menu>/<item>"; the user's role grants per screen
 // view (menu entry) · add · del · edit · print. A window opened from a menu item remembers
 // its key and disables the toolbar buttons the role doesn't allow.
@@ -41,6 +41,7 @@ const UI = {
     if (this.wins.has(id)) return this.focus(id)
     const desk = document.getElementById('desktop')
     const nested = this.wins.size > 0
+    if (!nested && window.Nav?.label) title = Nav.label
     const crumbs = [window.Nav?.section, nested ? this.wins.get(this.active)?.title : null].filter(Boolean)
     const win = this.el(`
       <section class="win hr-page-enter" data-win="${this.esc(id)}" style="--page-w:${width >= 1000 ? 'none' : `${Math.round(width * 1.25)}px`}">

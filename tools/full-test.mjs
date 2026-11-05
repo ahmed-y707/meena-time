@@ -1,5 +1,5 @@
-// Full functional test of the real Electron app (run: xvfb-run -a node tools/full-test.mjs).
-// Walks every menu item, every toolbar button and every dialog; prints PASS/FAIL per
+// Full functional test of the real Electron app (run: npm run build:ui && xvfb-run -a node tools/full-test.mjs).
+// Walks the sidebar, the toolbars and the dialogs of the msar-erp.com-style shell; keeps every attendance figure; prints PASS/FAIL per
 // check and saves a screenshot of each screen in test-shots/.
 import { _electron as electron } from '/home/frappeuser/tamken3-audit/node_modules/playwright/index.mjs'
 import fs from 'fs'
@@ -7,13 +7,12 @@ import { execFileSync } from 'child_process'
 
 const ROOT = process.env.MT_ROOT || '/root/meena-time'
 const SHOTS = `${ROOT}/test-shots`
-const UD = '/tmp/mt-fulltest'
+const UD = '/tmp/TEST-mt-fulltest' // test data lives here only and is deleted at the end
 fs.rmSync(SHOTS, { recursive: true, force: true }); fs.mkdirSync(SHOTS, { recursive: true })
 fs.rmSync(UD, { recursive: true, force: true })
 
 let pass = 0, fail = 0
-const results = []
-const check = (name, ok, info = '') => { ok ? pass++ : fail++; results.push(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : '  → ' + info}`) }
+const check = (name, ok, info = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : '  → ' + info}`) }
 
 const app = await electron.launch({ executablePath: `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT })
 const p = await app.firstWindow()
@@ -29,39 +28,52 @@ await app.evaluate(({ dialog }, ud) => { dialog.showSaveDialog = async () => ({ 
 
 let shot = 0
 const snap = async (name) => p.screenshot({ path: `${SHOTS}/${String(++shot).padStart(2, '0')}-${name}.png` })
-const menu = async (m, item, sub) => {
-  await p.locator('#menubar .menu > button', { hasText: m }).first().click()
-  if (sub) await p.locator('.menu.open .drop .has-sub', { hasText: sub }).hover()
-  await p.locator('.menu.open .drop button', { hasText: item }).first().click()
-  await p.waitForTimeout(250)
+// a sidebar page by its label; the old «menu/item» names of the permission keys still work
+const PAGE = { 'الموظفون': 'الموظفين', 'قوائم البرنامج': 'الوظائف', 'مواعيد العمل': 'أوقات العمل', 'تعريف الأجهزة': 'الاجهزة', 'قراءة الحركات': 'قراءة الحركات', 'عرض الحركات': 'عرض الحركات',
+  'إضافة وتعديل': 'اضافة و تعديل حركات', 'الغاء الحركات': 'الغاء الحركات المعدلة يدويا', 'إضافة أجازات': 'اضافة اجازة', 'إضافة أذونات': 'اضافة اذن', 'ترحيل الحركات': 'ترحيل الحركات',
+  'الغاء ترحيل': 'إلغاء ترحيل الحركات', 'الغاء جميع': 'الغاء بيانات موظف', 'بيانات المؤسسه': 'بيانات الشركة', 'صلاحيات المستخدمين': 'الصلاحيات', 'إدارة المستخدمين': 'المستخدمين', 'اعدادات النظام': 'اعدادات الحضور و الانصراف' }
+const openPage = async (pg, label) => {
+  await pg.evaluate((l) => {
+    const b = [...document.querySelectorAll('#rail [data-page]')].find((x) => x.dataset.page === l)
+    for (let k = b?.parentElement; k && k.id !== 'rail'; k = k.parentElement) if (k.classList.contains('rail-kids') && k.hidden) k.previousElementSibling.click()
+  }, label)
+  await pg.locator(`#rail [data-page="${label}"]`).click()
+  await pg.waitForTimeout(250)
 }
+const menu = async (m, item) => openPage(p, m === 'التقارير' ? item : PAGE[Object.keys(PAGE).find((k) => item.startsWith(k))] || item)
 const dlgText = async () => (await p.locator('.dlg-backdrop').last().textContent()).trim()
 const okMsg = async () => { const t = (await p.locator('.dlg-backdrop .body').last().textContent()).trim(); await p.locator('.dlg-backdrop').last().getByRole('button', { name: 'موافق' }).click(); await p.waitForTimeout(150); return t }
 const yes = async () => { await p.locator('.dlg-backdrop').last().getByRole('button', { name: 'نعم' }).click(); await p.waitForTimeout(250) }
-const win = (t) => p.locator('.win', { has: p.locator('.cap', { hasText: t }) }).last()
+// a page's caption is its sidebar label; opened from another page it keeps its own title
+const ALSO = { 'إضافة وتعديل حركات موظف': 'اضافة و تعديل حركات', 'أجازات الموظفين': 'اضافة اجازة', 'أذونات الموظفين': 'اضافة اذن', 'ترحيل الحركات وحساب ساعات العمل': 'ترحيل الحركات',
+  'الغاء ترحيل الحركات خلال فترة': 'إلغاء ترحيل الحركات', 'إلغاء الحركات المعدله يدويا': 'الغاء الحركات المعدلة يدويا', 'الغاء جميع بيانات الموظف': 'الغاء بيانات موظف' }
+const win = (t) => p.locator('.win', { has: p.locator('.cap', { hasText: ALSO[t] ? new RegExp(`${t}|${ALSO[t]}`) : t }) }).last()
 const repWin = (name) => p.locator(`.win[data-win="rep-${name}"]`)
-const btn = (w, name) => w.locator('.toolbar button', { hasText: name }).first()
-const lastRow = (w) => w.locator('tbody tr').last()
-const rowCount = async (w) => w.locator('tbody tr:not(.new)').count() // without the numbered new row
-// Apex grid flow: «حفظ» confirms with «تم حفظ البيانات بنجاح.»; «إهمال» asks first, then shows the rows only
-const gsave = async (w) => {
-  await btn(w, 'حفظ').click(); await p.waitForTimeout(250)
+const BTN = { 'جديد': 'اضافة', 'طباعه': 'الطباعة' }
+const btn = (w, name) => w.locator('.toolbar button', { hasText: BTN[name] || name }).first()
+const rowCount = async (w) => w.locator('tbody tr[data-id]').count()
+const loginBtn = (pg = p) => pg.locator('.dlg .btns button.pri').first()
+const closeWin = async (w) => { await w.evaluate((el) => { UI.close(el.dataset.win) }); await p.waitForTimeout(200) }
+// the add / edit dialog of a list page
+const dlgSave = async () => { await p.locator('.dlg-backdrop').last().getByRole('button', { name: 'حفظ' }).click(); await p.waitForTimeout(250) }
+const dlgFill = async (values) => {
   const d = p.locator('.dlg-backdrop').last()
-  if (await d.count() && /تم حفظ البيانات بنجاح/.test(await d.textContent())) await okMsg()
+  for (const [f, v] of Object.entries(values)) {
+    const el = d.locator(`[data-f=${f}]`)
+    if ((await el.evaluate((e) => e.tagName)) === 'SELECT') await el.selectOption(typeof v === 'number' ? { index: v } : { label: v })
+    else await el.fill(String(v))
+  }
 }
-const gundo = async (w, { add = true } = {}) => {
-  await btn(w, 'إهمال').click(); await p.locator('.dlg-backdrop').last().getByRole('button', { name: 'موافق' }).click(); await p.waitForTimeout(150)
-  if (add) { await btn(w, 'جديد').click(); await p.waitForTimeout(100) }
-}
-const closeWin = async (w) => { await btn(w, 'إغلاق').click(); await p.waitForTimeout(150) }
+const addRow = async (w, values) => { await btn(w, 'جديد').click(); await p.waitForTimeout(150); await dlgFill(values); await dlgSave(); return okMsg() }
 
 // ── 1. login ──────────────────────────────────────────────
-await p.waitForSelector('text=شاشة الدخول', { timeout: 20000 })
+await p.waitForSelector('text=تسجيل الدخول', { timeout: 20000 })
 await snap('login')
+check('login: Masar logo + photo, works offline (no remote assets)', (await p.locator('.login-logo').count()) === 1 && (await p.locator('.login-photo img').count()) === 1)
 check('login: single database shown', (await p.locator('#year option').count()) === 1)
-await p.locator('#pass').fill('bad'); await p.locator('.dlg').getByRole('button', { name: 'موافق' }).click(); await p.waitForTimeout(300)
+await p.locator('#pass').fill('bad'); await loginBtn().click(); await p.waitForTimeout(300)
 check('login: wrong password rejected', /غير صحيحة/.test(await p.locator('.dlg .err').textContent()))
-await p.locator('#user').fill('Admin'); await p.locator('#pass').fill(''); await p.locator('.dlg').getByRole('button', { name: 'موافق' }).click(); await p.waitForTimeout(400)
+await p.locator('#user').fill('Admin'); await p.locator('#pass').fill(''); await loginBtn().click(); await p.waitForTimeout(400)
 check('first login: «admin» signs in as «أ» and is forced to set a password', /تعيين كلمة مرور جديدة/.test(await dlgText()) && /«أ»/.test(await dlgText()))
 await p.locator('#np1').fill('ab'); await p.locator('#np2').fill('ab'); await p.locator('.dlg-backdrop').last().getByRole('button', { name: 'حفظ' }).click(); await p.waitForTimeout(150)
 check('first login: short password rejected', /4 أحرف/.test(await p.locator('.dlg-backdrop').last().locator('.err').textContent()))
@@ -69,29 +81,31 @@ await snap('force-password')
 await p.locator('#np1').fill('start1'); await p.locator('#np2').fill('start1'); await p.locator('.dlg-backdrop').last().getByRole('button', { name: 'حفظ' }).click(); await p.waitForTimeout(700)
 check('login: default admin «أ» in after setting the password', await p.locator('#home').isVisible())
 await snap('home')
-check('home: 4 tiles', (await p.locator('.tile').count()) === 4)
-await p.locator('.tile', { hasText: 'التجهيز' }).click(); await p.waitForTimeout(150)
-check('home: «التجهيز» opens its 8 tiles (Apex)', (await p.locator('#home.sub .tile').count()) === 8 && /التجهيز/.test(await p.locator('#home .title').textContent()))
-await p.locator('.tile', { hasText: 'الموظفون' }).click(); await p.waitForTimeout(250)
-check('home: a sub tile opens its screen', (await p.locator('.win', { has: p.locator('.cap', { hasText: 'الموظفون' }) }).count()) === 1)
-await p.locator('.home-btn').click(); await p.waitForTimeout(150)
-check('home: the home button closes windows and comes back to the 4 tiles', (await p.locator('.win').count()) === 0 && (await p.locator('#home .tile').count()) === 4)
-for (const [t, n] of [['الإجراءات', 7], ['التقارير', 10], ['المستخدمون', 4]]) {
-  await p.locator('#home .tile', { hasText: t }).click(); await p.waitForTimeout(100)
-  check(`home: «${t}» opens ${n} tiles`, (await p.locator('#home.sub .tile').count()) === n); await p.locator('.home-btn').click(); await p.waitForTimeout(100)
+check('shell: dashboard with today\'s summary', (await p.locator('#home .dash-tile').count()) === 6 && /إجمالي الموظفين/.test(await p.locator('#home .dash-donut').textContent()))
+check('shell: sidebar on the right, topbar over the main column', await p.evaluate(() => { const r = document.getElementById('rail').getBoundingClientRect(), t = document.getElementById('topbar').getBoundingClientRect(); return r.left > t.left && r.height >= innerHeight - 1 && t.right <= r.left + 1 }))
+check('shell: Masar palette (dark-teal sidebar, topbar)', await p.evaluate(() => getComputedStyle(document.getElementById('rail')).backgroundColor === 'rgb(29, 77, 86)'))
+check('shell: embedded Arabic font', await p.evaluate(() => /Noto Kufi Arabic/.test(getComputedStyle(document.body).fontFamily) && document.fonts.check('14px "Noto Kufi Arabic"', 'م')))
+check('shell: nothing is loaded from the internet', await p.evaluate(() => performance.getEntriesByType('resource').every((r) => !/^https?:/.test(r.name))))
+check('banner: trial notice when unregistered', /تجريبية/.test(await p.locator('#banner').textContent()))
+check('caption: version matches package.json', (await p.title()).includes(JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).version))
+check('package: named Masar Time 2.0.0', JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).productName === 'Masar Time' && JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).version === '2.0.0')
+// the sidebar follows routes.ts; what needs the internet is not in it
+check('sidebar: sections in the site\'s order', (await p.locator('#rail nav > [data-page], #rail nav > .rail-group > [data-toggle]').allTextContents()).map((t) => t.trim()).join('|') === 'لوحة القيادة|البيانات الاساسية|الحضور والانصراف|المستخدمين|الاعدادات')
+{
+  const all = await p.evaluate(() => [...document.querySelectorAll('#rail [data-page]')].map((b) => b.dataset.page))
+  check('sidebar: no online pages', !all.some((n) => /الجوال|المواقع|الاشتراك|الطلبات|الربط بالموقع/.test(n)), all.join())
+  check('sidebar: 14 reports in lib/hr-reports.ts order', all.slice(all.indexOf('حالة اليوم'), all.indexOf('حالة اليوم') + 3).join('|') === 'حالة اليوم|الحضور والانصراف تفصيلي|الحضور والانصراف إجمالي' && all.includes('تأخير وإضافي الدوام'))
+  for (const n of ['الموظفين', 'الوظائف', 'أوقات العمل', 'العطلات الرسمية', 'انواع الاجازات', 'اضافة اجازة', 'اضافة اذن', 'الاجهزة', 'الاعدادات العامة', 'بيانات الشركة']) check(`sidebar: «${n}»`, all.includes(n))
 }
-check('home: trial banner shown when unregistered', await p.locator('.trial').isVisible())
-check('caption: Unregistered', /Unregistered/.test(await p.locator('#caption-text').textContent()))
-check('caption: version matches package.json', (await p.locator('#caption-text').textContent()).includes(`Ver. ${JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).version} `))
-check('menubar: 7 menus', (await p.locator('#menubar .menu').count()) === 7)
-
-// every menu opens and lists its items
-for (const [m, n] of [['ملف', 2], ['البيانات الأساسية', 8], ['الإجراءات', 9], ['التقارير', 14], ['الاعدادات', 6], ['ادوات', 1], ['مساعده', 3]]) {
-  await p.locator('#menubar .menu > button', { hasText: m }).first().click(); await p.waitForTimeout(150)
-  check(`menu «${m}» has ${n} items`, (await p.locator('.menu.open .drop button').count()) === n, `got ${await p.locator('.menu.open .drop button').count()}`)
-  if (m === 'البيانات الأساسية' || m === 'الإجراءات' || m === 'التقارير') await snap(`menu-${m}`)
-  await p.keyboard.press('Escape'); await p.mouse.click(700, 700); await p.waitForTimeout(100)
-}
+await openPage(p, 'الموظفين')
+check('sidebar: a page opens in the main column, the dashboard hides', (await p.locator('.win[data-win=employees]').isVisible()) && (await p.locator('#home').isHidden()))
+check('sidebar: the current page is marked', await p.locator('#rail [data-page="الموظفين"] .bar').isVisible())
+await p.locator('#tb-q').fill('العطلات'); await p.waitForTimeout(100); await p.locator('#tb-hits button').first().dispatchEvent('mousedown'); await p.waitForTimeout(250)
+check('topbar: quick search opens a screen', await win('العطلات الرسمية').isVisible() && (await p.locator('.win').count()) === 1)
+await p.locator('#rail-logo').click(); await p.waitForTimeout(200)
+check('sidebar: the logo comes back to the dashboard', (await p.locator('.win').count()) === 0 && await p.locator('#home').isVisible())
+await p.locator('#tb-user-btn').click(); check('topbar: user menu with خروج', /خروج/.test(await p.locator('#tb-user-menu').textContent())); await p.mouse.click(600, 500); await p.waitForTimeout(100)
+await snap('sidebar')
 
 // ── 2. settings: company ──────────────────────────────────
 await menu('الاعدادات', 'بيانات المؤسسه'); let cw = win('بيانات الشركة'); await snap('company')
@@ -109,71 +123,54 @@ await closeWin(cw)
 async function gridCrud(title, menuItem, fill, { required = 'مطلوب' } = {}) {
   await menu('البيانات الأساسية', menuItem)
   const w = win(title)
-  check(`${title}: window opens`, await w.isVisible())
+  check(`${title}: page opens`, await w.isVisible())
+  check(`${title}: search + «تصدير» + «اضافة»`, (await w.locator('.tb-search input').count()) === 1 && (await w.locator('.tb-menu .tb-btn').count()) === 1 && (await btn(w, 'جديد').count()) === 1)
+  check(`${title}: empty state`, (await w.locator('.apex-empty').count()) === 1)
   await snap(`grid-${title}`)
-  // required field
-  await lastRow(w).locator('[data-f]').first().evaluate((el) => { el.value = el.tagName === 'SELECT' ? el.value : ' '; el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input')) })
-  await btn(w, 'حفظ').click(); await p.waitForTimeout(200)
-  if (await p.locator('.dlg-backdrop').count()) check(`${title}: required validation`, (await okMsg()).includes(required))
-  await gundo(w, { add: false })
-  check(`${title}: «إهمال» discards unsaved row`, (await rowCount(w)) === 0 && (await w.locator('tbody tr.new').count()) === 0)
-  check(`${title}: viewing → جديد on, حفظ / إهمال off`, !(await btn(w, 'جديد').isDisabled()) && (await btn(w, 'حفظ').isDisabled()) && (await btn(w, 'إهمال').isDisabled()))
-  await btn(w, 'جديد').click(); await p.waitForTimeout(100)
-  check(`${title}: جديد → numbered new row, جديد off`, (await w.locator('tbody tr.new').count()) === 1 && (await btn(w, 'جديد').isDisabled()))
-  for (const values of fill) {
-    const r = lastRow(w)
-    for (const [f, v] of Object.entries(values)) {
-      const el = r.locator(`[data-f=${f}]`)
-      if ((await el.evaluate((e) => e.tagName)) === 'SELECT') await el.selectOption(typeof v === 'number' ? { index: v } : { label: v })
-      else await el.fill(String(v))
-    }
-    await btn(w, 'حفظ').click(); await p.waitForTimeout(250)
-    { const m = await okMsg(); if (!/تم حفظ البيانات بنجاح/.test(m)) check(`${title}: save`, false, m) }
-  }
+  // required field: the dialog stays open with the message
+  await btn(w, 'جديد').click(); await p.waitForTimeout(150); await snap(`dialog-${title}`)
+  await dlgSave()
+  check(`${title}: required validation`, (await p.locator('.dlg-backdrop .err').last().textContent()).includes(required))
+  await p.locator('.dlg-backdrop .dlg-x').last().click(); await p.waitForTimeout(100)
+  check(`${title}: ✕ closes without saving`, (await p.locator('.dlg-backdrop').count()) === 0 && (await rowCount(w)) === 0)
+  for (const values of fill) { const m = await addRow(w, values); if (!/تم حفظ البيانات بنجاح/.test(m)) check(`${title}: save`, false, m) }
   check(`${title}: ${fill.length} rows saved`, (await rowCount(w)) === fill.length, `rows=${await rowCount(w)}`)
-  // edit first row, undo, then edit + save
-  const first = w.locator('tbody tr').first().locator('[data-f]').first()
-  if ((await first.evaluate((e) => e.tagName)) === 'INPUT') {
-    const orig = await first.inputValue()
-    await first.fill(orig + ' X'); await gundo(w, { add: false })
-    check(`${title}: «إهمال» restores edited value`, (await w.locator('tbody tr').first().locator('[data-f]').first().inputValue()) === orig)
-    await w.locator('tbody tr').first().locator('[data-f]').first().fill(orig + ' م'); await gsave(w)
-    check(`${title}: edit saved`, (await w.locator('tbody tr').first().locator('[data-f]').first().inputValue()) === orig + ' م')
-  }
-  // Apex shows «مساعده» only on some of these windows
-  if (await btn(w, 'مساعده').count()) { await btn(w, 'مساعده').click(); await p.waitForTimeout(100); check(`${title}: «مساعده» shows help`, (await okMsg()).length > 5) }
-  if (await btn(w, 'طباعه').count()) { await btn(w, 'طباعه').click(); await p.waitForTimeout(100) }
+  // edit: pencil, ✕ drops the change, then edit + save
+  const pen = () => w.locator('tbody tr[data-id]').first().locator('[data-a=edit]')
+  const cell = () => w.locator('tbody tr[data-id]').first().locator('td').nth(1)
+  const orig = (await cell().textContent()).trim()
+  await pen().click(); await p.waitForTimeout(120); await dlgFill({ [Object.keys(fill[0])[0]]: orig + ' X' }); await p.locator('.dlg-backdrop .dlg-x').last().click(); await p.waitForTimeout(100)
+  check(`${title}: ✕ keeps the old value`, (await cell().textContent()).trim() === orig)
+  await pen().click(); await p.waitForTimeout(120); await dlgFill({ [Object.keys(fill[0])[0]]: orig + ' م' }); await dlgSave(); await okMsg()
+  check(`${title}: edit saved`, (await cell().textContent()).trim() === orig + ' م')
+  // search
+  await w.locator('.tb-search input').fill('لا_يوجد_هذا'); await p.waitForTimeout(100)
+  check(`${title}: search filters`, (await rowCount(w)) === 0 && (await w.locator('.apex-empty').count()) === 1)
+  await w.locator('.tb-search input').fill(''); await p.waitForTimeout(100)
   return w
 }
 
-let w = await gridCrud('قوائم البرنامج', 'قوائم البرنامج', [{ name_ar: 'ممرض' }, { name_ar: 'محاسب' }])
-check('lists: «نوع القائمة» = Apex\'s 5 types in order, on the right', (await w.locator('.list-types .lt').count()) === 5 && (await w.locator('.list-types .lt').allTextContents()).map((t) => t.trim()).join('|') === 'الوظائف|المهام|الديانة|ملاحظات الحضور|نوع الاجازة' && (await w.locator('.list-types').boundingBox()).x > (await w.locator('.gs-main').boundingBox()).x)
-check('lists: only جديد · حفظ · إهمال · حذف · إغلاق', (await w.locator('.toolbar button span').allTextContents()).map((t) => t.trim()).join('|') === 'جديد|حفظ|إهمال|حذف|إغلاق')
-for (const [type, name] of [['نوع الاجازة', 'سنوية'], ['الديانة', 'مسيحي']]) {
-  await w.locator('.list-types .lt', { hasText: type }).click(); await p.waitForTimeout(120)
-  check(`lists: «${type}» caption + own (empty) list`, (await w.locator('.grid-caption').textContent()) === type && (await rowCount(w)) === 0)
-  await lastRow(w).locator('[data-f=name_ar]').fill(name); await gsave(w)
-}
-await w.locator('.list-types .lt', { hasText: 'الوظائف' }).click(); await p.waitForTimeout(120)
-check('lists: switching back shows the jobs only', (await rowCount(w)) === 2)
-// Enter saves the row at once and opens the next empty row
-const jobs = () => p.evaluate(() => DB.one("SELECT COUNT(*) AS n FROM lists WHERE list_type = 'job'").n)
-const jobsBefore = await jobs()
-await lastRow(w).locator('[data-f=name_ar]').fill('سائق'); await lastRow(w).locator('[data-f=name_ar]').press('Enter'); await p.waitForTimeout(250)
-check('lists: Enter saves the new row immediately', (await jobs()) === jobsBefore + 1)
-check('lists: … and opens another empty row with the cursor in it', (await w.locator('tbody tr').count()) === 4 && await lastRow(w).locator('[data-f=name_ar]').evaluate((e) => e === document.activeElement))
-await lastRow(w).locator('[data-f=name_ar]').fill('كاتب'); await lastRow(w).locator('[data-f=name_ar]').press('Enter'); await p.waitForTimeout(250)
-check('lists: rows numbered 1…n within the list', (await w.locator('tbody tr').nth(3).locator('td').nth(1).textContent()) === '4' && (await jobs()) === jobsBefore + 2)
-await w.locator('tbody tr').first().locator('[data-f=name_ar]').fill('ممرض م ت'); await w.locator('tbody tr').first().locator('[data-f=name_ar]').press('Enter'); await p.waitForTimeout(250)
-check('lists: Enter on an edited row saves it and moves down', await p.evaluate(() => !!DB.one("SELECT 1 FROM lists WHERE name_ar = 'ممرض م ت'")) && await w.locator('tbody tr').nth(1).locator('[data-f=name_ar]').evaluate((e) => e === document.activeElement))
-await lastRow(w).locator('[data-f=name_ar]').fill(' '); await lastRow(w).locator('[data-f=name_ar]').press('Enter'); await p.waitForTimeout(150)
-check('lists: Enter with a missing name shows the message and saves nothing', /مطلوب/.test(await okMsg()) && (await jobs()) === jobsBefore + 2)
-await gundo(w)
-await p.evaluate(() => { DB.run("UPDATE lists SET name_ar = 'ممرض م' WHERE name_ar = 'ممرض م ت'") })
-await p.evaluate(() => { DB.run("DELETE FROM lists WHERE name_ar IN ('سائق', 'كاتب')") }); await w.locator('.list-types .lt', { hasText: 'المهام' }).click(); await w.locator('.list-types .lt', { hasText: 'الوظائف' }).click(); await p.waitForTimeout(120)
-check('lists: rows stored with their type', await p.evaluate(() => DB.all('SELECT list_type t, name_ar n FROM lists ORDER BY id').map((r) => r.t + ':' + r.n).join()) === 'job:ممرض م,job:محاسب,leave:سنوية,religion:مسيحي')
+let w = await gridCrud('الوظائف', 'قوائم البرنامج', [{ name_ar: 'ممرض' }, { name_ar: 'محاسب' }])
 await closeWin(w)
-await menu('البيانات الأساسية', 'الإدارات والأقسام'); w = win('قوائم الأقسام والإدارات'); await snap('departments')
+for (const [page, name] of [['انواع الاجازات', 'سنوية'], ['الديانة', 'مسيحي']]) {
+  await openPage(p, page); w = win(page)
+  check(`lists: «${page}» has its own (empty) list`, (await rowCount(w)) === 0)
+  await addRow(w, { name_ar: name }); await closeWin(w)
+}
+await openPage(p, 'الوظائف'); w = win('الوظائف')
+check('lists: «الوظائف» shows the jobs only', (await rowCount(w)) === 2)
+const jobs = () => p.evaluate(() => DB.one("SELECT COUNT(*) AS n FROM lists WHERE list_type = 'job'").n)
+{
+  const before = await jobs()
+  await btn(w, 'جديد').click(); await p.waitForTimeout(120); await dlgFill({ name_ar: 'سائق' }); await p.locator('.dlg-backdrop [data-f=name_ar]').press('Enter'); await p.waitForTimeout(300); await okMsg()
+  check('lists: Enter saves the dialog', (await jobs()) === before + 1)
+  check('lists: rows numbered 1…n', (await w.locator('tbody tr[data-id]').nth(2).locator('td').first().textContent()) === '3')
+  await w.locator('tbody tr[data-id]').nth(2).locator('[data-a=del]').click(); await p.waitForTimeout(120); await yes(); await p.waitForTimeout(150)
+  check('lists: trash asks, then deletes', (await jobs()) === before)
+}
+check('lists: rows stored with their type', await p.evaluate(() => DB.all('SELECT list_type t, name_ar n FROM lists ORDER BY id').map((r) => r.t + ':' + r.n).join()) === 'job:ممرض م,job:محاسب,leave:سنوية,religion:مسيحي', await p.evaluate(() => DB.all('SELECT list_type t, name_ar n FROM lists ORDER BY id').map((r) => r.t + ':' + r.n).join()))
+await closeWin(w)
+await menu('البيانات الأساسية', 'الإدارات والأقسام'); w = win('الإدارات والأقسام'); await snap('departments')
 check('departments: Apex viewing state (حفظ / إهمال off)', (await btn(w, 'حفظ').isDisabled()) && (await btn(w, 'إهمال').isDisabled()) && !(await btn(w, 'رئيسي').isDisabled()))
 await btn(w, 'جديد').click(); await p.waitForTimeout(120); check('departments: «جديد» needs a selected إدارة', /حدد الإدارة/.test(await okMsg()))
 await btn(w, 'رئيسي').click(); check('departments: adding → only حفظ / إهمال', (await btn(w, 'جديد').isDisabled()) && (await btn(w, 'حذف').isDisabled()) && !(await btn(w, 'حفظ').isDisabled()) && (await w.locator('#dw-id').inputValue()) === '1')
@@ -190,25 +187,26 @@ check('departments: «إهمال» restores the record', (await w.locator('#dw-a
 await btn(w, 'حذف').click(); await p.waitForTimeout(150)
 check('departments: parent with sections cannot be deleted', /أقسام تابعة/.test(await okMsg()))
 await closeWin(w)
-w = await gridCrud('المشـــاريع', 'المشاريع', [{ name_ar: 'مشروع أ', name_en: 'Project A' }])
-// «طباعة» prints the list itself as a report (letterhead + table), not the screen
+w = await gridCrud('المشاريع', 'المشاريع', [{ name_ar: 'مشروع أ', name_en: 'Project A' }])
+// «تصدير ← طباعة» prints the list itself as a report (letterhead + table), not the screen
 {
   const before = (await prints()).length
-  await btn(w, 'طباعه').click(); await p.waitForTimeout(400)
+  await w.locator('.tb-menu .tb-btn').click(); await p.waitForTimeout(80); await w.locator('.tb-drop [data-x=print]').click(); await p.waitForTimeout(400)
   const doc = (await prints())[before] || ''
   check('grid print: sends a document', !!doc)
   fs.writeFileSync(`${SHOTS}/grid-print.html`, doc)
-  check('grid print: letterhead + title + rows as text', doc.includes('rep-head') && doc.includes('المشـــاريع') && doc.includes('مشروع أ'))
-  check('grid print: no form controls in the printout', !/<(select|input)\b/.test(doc.split('<body')[1] || ''))
+  check('grid print: letterhead + title + rows as text', doc.includes('rep-head') && doc.includes('المشاريع') && doc.includes('مشروع أ'))
+  check('grid print: no form controls in the printout', !/<(select|input|button)\b/.test(doc.split('<body')[1] || ''))
+  await w.locator('.tb-menu .tb-btn').click(); await p.waitForTimeout(80); await w.locator('.tb-drop [data-x=excel]').click(); await p.waitForTimeout(500); await okMsg()
+  check('grid export: a real .xlsx', fs.readFileSync(`${UD}/manual-backup.sqlite`).slice(0, 2).toString() === 'PK')
 }
 await closeWin(w)
 w = await gridCrud('مجموعات الموظفين', 'مجموعات الموظفين', [{ name_ar: 'المجموعة الأولى' }])
-check('employee groups: Apex «الموظفون» button', (await btn(w, 'الموظفون').count()) === 1); await closeWin(w)
+check('employee groups: «الموظفون» on each row', (await w.locator('tbody tr[data-id] [data-x=members]').count()) === 1); await closeWin(w)
 w = await gridCrud('العطلات الرسمية', 'العطلات الرسمية', [{ name_ar: 'اليوم الوطني', from_date: '2026-09-23', to_date: '2026-09-23' }]); await closeWin(w)
 await p.evaluate(() => openGuide('أجهزة البصمة')); await p.waitForTimeout(300); w = win('دليل الاستخدام')
 check('guide: «أجهزة البصمة» instructions', /Menu ← Comm ← Ethernet/.test(await w.locator('article').textContent())); await closeWin(w)
-await menu('البيانات الأساسية', 'تعريف الأجهزة'); w = win('اعدادات الجهاز'); await snap('devices')
-check('devices: no «كلمة الاتصال» / «الرقم التسلسلي» (Apex)', (await w.locator('#dv-key, #dv-serial').count()) === 0)
+await menu('البيانات الأساسية', 'تعريف الأجهزة'); w = win('الاجهزة'); await snap('devices')
 check('devices: Apex «نوع الجهاز» list', (await w.locator('#dv-type option').allTextContents()).join('|') === '-|ZKTeco|Timmy ZX_DF02|Timmy TM_F630|Timmy TM-AI06')
 check('devices: Apex «نوع الاتصال» list', (await w.locator('#dv-conn option').allTextContents()).filter(Boolean).join('|') === 'TCP / IP|Serial|Modem')
 await btn(w, 'جديد').click(); check('devices: a new device starts with empty IP / Port', (await w.locator('#dv-ip').inputValue()) === '' && (await w.locator('#dv-port').inputValue()) === ''); await w.locator('#dv-name').fill('جهاز المدخل'); await btn(w, 'حفظ').click(); await p.waitForTimeout(150)
@@ -224,14 +222,14 @@ await w.locator('#dv-ip').fill('127.0.0.1'); await w.locator('#dv-pick').click()
 await p.locator('.dlg .dv-tree .tn', { hasText: 'قسم الطوارئ' }).click(); await p.waitForTimeout(100)
 check('devices: القسم picked from the tree', /قسم الطوارئ/.test(await w.locator('#dv-dep').inputValue()))
 await btn(w, 'حفظ').click(); await p.waitForTimeout(200); await okMsg()
-check('devices: saved and listed with its code + department', (await w.locator('tbody tr[data-id]').count()) === 1 && /قسم الطوارئ/.test(await w.locator('tbody tr').first().textContent()) && (await w.locator('#dv-port').inputValue()) === '4370')
+check('devices: saved and listed with its code + department', (await w.locator('.dev-win tbody tr[data-id]').count()) === 1 && /قسم الطوارئ/.test(await w.locator('.dev-win tbody tr').first().textContent()) && (await w.locator('#dv-port').inputValue()) === '4370')
 await closeWin(w)
-await menu('البيانات الأساسية', 'الإدارات والأقسام'); w = win('قوائم الأقسام والإدارات'); await w.locator('.tn', { hasText: 'قسم الطوارئ' }).click(); await btn(w, 'حذف').click(); await p.waitForTimeout(150)
+await menu('البيانات الأساسية', 'الإدارات والأقسام'); w = win('الإدارات والأقسام'); await w.locator('.tn', { hasText: 'قسم الطوارئ' }).click(); await btn(w, 'حذف').click(); await p.waitForTimeout(150)
 check('departments: section used by a device cannot be deleted', /مرتبط/.test(await okMsg())); await closeWin(w)
-w = await gridCrud('مجموعات أوقات الدوام', 'مواعيد العمل', [{ name_ar: 'صباحي' }, { name_ar: 'مسائي' }])
+w = await gridCrud('أوقات العمل', 'مواعيد العمل', [{ name_ar: 'صباحي' }, { name_ar: 'مسائي' }])
 
 // shift times — Apex «إعداد مواعيد العمل»
-await gundo(w, { add: false }); await w.locator('tbody tr').first().click(); await btn(w, 'المواعيد').click(); await p.waitForTimeout(300)
+await w.locator('tbody tr[data-id]').first().locator('[data-x=times]').click(); await p.waitForTimeout(300)
 let tw = win('إعداد مواعيد العمل')
 const tab = async (t, day) => { await t.locator('.st-tabs button', { hasText: day }).click(); await p.waitForTimeout(80) }
 const per = (t, i) => t.locator(`.st-grid tr[data-i="${i}"]`)
@@ -239,7 +237,6 @@ const per = (t, i) => t.locator(`.st-grid tr[data-i="${i}"]`)
 const repeat = async (t, yes = true) => { await btn(t, 'تكرار').click(); await p.waitForTimeout(100); await p.locator('.dlg').getByRole('button', { name: yes ? 'نعم' : 'لا' }).click(); await p.waitForTimeout(100) }
 const setPer = async (t, i, b, e, late = '15', early = '15') => { const r = per(t, i); await r.locator('[data-f=b]').fill(b); await r.locator('[data-f=e]').fill(e); await r.locator('[data-f=late]').fill(late); await r.locator('[data-f=early]').fill(early) }
 check('shift times: Apex window — 7 day tabs × 4 periods × 8 columns', (await tw.locator('.st-tabs button').count()) === 7 && (await tw.locator('.st-grid tbody tr').count()) === 4 && (await tw.locator('.st-grid tbody tr').first().locator('input').count()) === 8)
-check('shift times: Apex toolbar مساعده · تكرار · حفظ · إغلاق', (await tw.locator('.toolbar button span').allTextContents()).map((x) => x.trim()).join('|') === 'مساعده|تكرار|حفظ|إغلاق')
 check('shift times: «هام جدا» note', /هام جدا/.test(await tw.locator('.st-note').textContent()) && (await tw.locator('#st-ext').count()) === 0)
 check('windows: opening one hides the other (Apex MDI)', (await w.isHidden()) && (await tw.isVisible()))
 const si1 = per(tw, 1).locator('[data-f=si]')
@@ -293,7 +290,7 @@ for (const [k, v, want, why] of [['si', '23:00', 0, '«بداية الحضور»
 check('shift times: fixing the time removes the ✖', (await bads()) === 0)
 await fillP(1, { b: '01:00', e: '02:00' }); await fillP(1, { b: '', e: '' }); await fillP(2, { b: '23:50', e: '23:55' })
 await btn(tw, 'حفظ').click(); await p.waitForTimeout(200); check('shift times: third period with the second empty saves', /تم حفظ/.test(await okMsg()))
-await closeWin(tw); await w.locator('tbody tr').first().click(); await btn(w, 'المواعيد').click(); await p.waitForTimeout(300); tw = win('إعداد مواعيد العمل')
+await closeWin(tw); await w.locator('tbody tr[data-id]').first().locator('[data-x=times]').click(); await p.waitForTimeout(300); tw = win('إعداد مواعيد العمل')
 check('shift times: reopened — the third period stays third', (await per(tw, 2).locator('[data-f=b]').inputValue()) === '23:50' && (await per(tw, 1).locator('[data-f=b]').inputValue()) === '')
 await fillP(2, { b: '', e: '', si: '', ei: '', so: '', eo: '' })
 await fillP(0, { b: '25:99' }); check('shift times: impossible time → ✖', (await bads()) === 1); await btn(tw, 'حفظ').click(); await p.waitForTimeout(200)
@@ -306,7 +303,7 @@ check('shift times: empty punch windows filled in (08:00–16:00 → 06:00 … 2
 await snap('shift-times')
 // closing with unsaved times asks first (they used to vanish silently)
 const dlgBtn = async (name) => { await p.locator('.dlg-backdrop').last().getByRole('button', { name, exact: true }).click(); await p.waitForTimeout(250) }
-const reopenTimes = async () => { await btn(w, 'المواعيد').click(); await p.waitForTimeout(300); return win('إعداد مواعيد العمل') }
+const reopenTimes = async () => { await w.locator('tbody tr[data-id]').first().locator('[data-x=times]').click(); await p.waitForTimeout(300); return win('إعداد مواعيد العمل') }
 await tab(tw, 'السبت'); await per(tw, 0).locator('[data-f=late]').fill('10')
 await closeWin(tw)
 check('unsaved times: closing asks حفظ / عدم الحفظ / إلغاء', /لم يتم حفظ مواعيد العمل/.test(await dlgText()))
@@ -320,8 +317,8 @@ check('unsaved times: dropped value not stored', (await per(tw, 0).locator('[dat
 await closeWin(tw)
 check('unsaved times: no question when nothing changed', (await p.locator('.dlg-backdrop').count()) === 0 && (await p.locator('.win[data-win^="shift-times-"]').count()) === 0)
 tw = await reopenTimes(); await tab(tw, 'السبت'); await per(tw, 0).locator('[data-f=late]').fill('10')
-await p.locator('#taskstrip .strip-x').click(); await p.waitForTimeout(200)
-check('unsaved times: the bar ✕ asks too', /لم يتم حفظ مواعيد العمل/.test(await dlgText()))
+await tw.locator('.page-head .x').click(); await p.waitForTimeout(200)
+check('unsaved times: «رجوع» asks too', /لم يتم حفظ مواعيد العمل/.test(await dlgText()))
 await dlgBtn('حفظ'); await okMsg()
 check('unsaved times: «حفظ» saves then closes', (await p.locator('.win[data-win^="shift-times-"]').count()) === 0)
 tw = await reopenTimes(); await tab(tw, 'السبت')
@@ -332,56 +329,37 @@ check('unsaved times: «حفظ» with an impossible time keeps the window (✖)'
 await per(tw, 0).locator('[data-f=b]').fill(b0); await per(tw, 0).locator('[data-f=late]').fill('15'); await btn(tw, 'حفظ').click(); await p.waitForTimeout(250); await okMsg()
 await closeWin(tw)
 check('windows: closing shows the previous one again', await w.isVisible())
-check('shift groups: total = 5 × 8h = 40:00', (await w.locator('tbody tr').first().locator('td').nth(4).textContent()) === '40:00')
+check('shift groups: total = 5 × 8h = 40:00', (await w.locator('tbody tr[data-id]').first().locator('td').nth(3).textContent()) === '40:00')
 await closeWin(w)
 
 // nationalities aren't edited in «قوائم البرنامج» (a linked site sends them): add one for the employee form
 await p.evaluate(() => DB.run("INSERT INTO lists (list_type, name_ar, name_en) VALUES ('nationality', 'سعودي', '')"))
 // ── 4. employees ──────────────────────────────────────────
 await menu('البيانات الأساسية', 'الموظفون')
-const ew = win('الموظفون')
-check('employees: window opens', await ew.isVisible())
-check('employees: «الاقسام» tree on the right (Apex)', await ew.evaluate((w) => { const t = w.querySelector('.apex-tree').getBoundingClientRect(), g = w.querySelector('.grid-wrap').getBoundingClientRect(); return t.left > g.left }))
-check('employees: no «الكل» — the first department is selected', !(await ew.locator('.apex-tree .tn', { hasText: 'الكل' }).count()) && (await ew.locator('.apex-tree .tn.on').count()) === 1)
-check('employees: Apex toolbar sequence', (await ew.locator('.toolbar button span').allTextContents()).map((t) => t.trim()).join('|') === 'مساعده|جديد|حفظ|إهمال|حذف|بحث|طباعه|إغلاق')
-// Apex «بيانات الموظف» holds these; the rest is in the full form behind «الاعدادات»
-const INLINE = ['code', 'name_ar', 'name_en', 'shift_group_id', 'job_id', 'project_id', 'task_id', 'religion', 'mobile', 'email']
+const ew = p.locator('.win[data-win=employees]')
+check('employees: page opens', await ew.isVisible())
+check('employees: search + department filter + «تصدير» + «اضافة»', (await ew.locator('.tb-search input').count()) === 1 && (await ew.locator('#emp-dep').count()) === 1 && (await ew.locator('.tb-menu').count()) === 1 && (await btn(ew, 'جديد').count()) === 1)
 const setField = async (root, k, v) => {
   const el = root.locator(`[data-f=${k}]`)
   const tag = await el.evaluate((e) => e.tagName + (e.type || ''))
   if (tag.startsWith('SELECT')) await el.selectOption({ label: v }); else if (tag === 'INPUTcheckbox') await el.check(); else await el.fill(v)
 }
-const OT = ['ot_before', 'ot_deduct_late', 'ot_holidays', 'ot_after', 'no_punch_out'] // Apex «الإعدادات» (cog) panel
+const OT = ['ot_before', 'ot_deduct_late', 'ot_holidays', 'ot_after', 'no_punch_out']
+// «اضافة» opens the employee's form as a page; it closes itself when saved
 async function addEmployee(code, name, { expect = 'تمت إضافة الموظف', shift = 'صباحي م', extra = {} } = {}) {
-  // Apex: a new employee joins the department / section selected in «الاقسام»
-  const place = extra.section_id || extra.department_id
-  if (place) { await ew.locator('.apex-tree .tn').filter({ hasText: new RegExp(`^${place}$`) }).first().click(); await p.waitForTimeout(150) }
-  await btn(ew, 'جديد').click(); await p.waitForTimeout(150)
-  if (code !== null) await ew.locator('[data-f=code]').fill(code)
-  if (name !== null) await ew.locator('[data-f=name_ar]').fill(name)
-  if (shift) await ew.locator('[data-f=shift_group_id]').selectOption({ label: shift })
-  for (const [k, v] of Object.entries(extra)) if (INLINE.includes(k)) await setField(ew, k, v)
-  const sets = Object.keys(extra).filter((k) => OT.includes(k))
-  if (sets.length) {
-    await ew.locator('#emp-settings').click(); await p.waitForTimeout(150)
-    for (const k of sets) await ew.locator(`.emp-set [data-f=${k}]`).check()
-    if (code === '1001') await snap('employee-settings')
-    await ew.locator('.emp-set .es-x').click()
-  }
+  await btn(ew, 'جديد').click(); await p.waitForTimeout(200)
+  const f = win('اضافة موظف')
+  if (code !== null) await f.locator('[data-f=code]').fill(code)
+  if (name !== null) await f.locator('[data-f=name_ar]').fill(name)
+  if (shift) await f.locator('[data-f=shift_group_id]').selectOption({ label: shift })
+  for (const [k, v] of Object.entries(extra)) await setField(f, k, v)
   if (code === '1001') await snap('employee-form')
-  await btn(ew, 'حفظ').click(); await p.waitForTimeout(300)
+  await btn(f, 'حفظ').click(); await p.waitForTimeout(300)
   const m = await okMsg()
-  // fields Apex has no place for (hire date, gender …): Meena's full form, double click on the row
-  const more = Object.entries(extra).filter(([k]) => !INLINE.includes(k) && !OT.includes(k) && k !== 'department_id' && k !== 'section_id')
-  if (more.length && m.includes(expect) && expect === 'تمت إضافة الموظف') {
-    await ew.locator('tbody tr', { hasText: code }).dblclick(); await p.waitForTimeout(250)
-    const f = win('تعديل موظف')
-    for (const [k, v] of more) await setField(f, k, v)
-    await btn(f, 'حفظ').click(); await p.waitForTimeout(300); await okMsg()
-  }
+  if (await f.count()) await closeWin(f)
   return m.includes(expect) ? true : m
 }
-const findEmp = async (t) => { await btn(ew, 'بحث').click(); await p.locator('#es-q').fill(t); await p.locator('.dlg-backdrop').last().getByRole('button', { name: 'موافق' }).click(); await p.waitForTimeout(200) }
+const findEmp = async (t) => { await ew.locator('.tb-search input').fill(t); await p.waitForTimeout(120) }
 check('employees: code required', (await addEmployee(null, 'بدون كود', { expect: 'كود الموظف مطلوب' })) === true)
 check('employees: code must be digits', (await addEmployee('A12', 'حروف', { expect: 'أرقاماً فقط' })) === true)
 check('employees: name required', (await addEmployee('1009', null, { expect: 'بالعربية مطلوب' })) === true)
@@ -390,40 +368,36 @@ check('employees: bad email rejected', (await addEmployee('1009', 'ايميل', 
 check('employees: add #1 (all fields)', (await addEmployee('1001', 'أحمد علي', { extra: { name_en: 'Ahmed Ali', job_id: 'ممرض م', department_id: 'الإدارة الطبية', section_id: 'قسم الطوارئ', group_id: 'المجموعة الأولى م', project_id: 'مشروع أ م', gender: 'ذكر', nationality_id: 'سعودي', religion: 'مسلم', mobile: '0500000000', email: 'a@b.co', hire_date: '2026-09-01', ot_after: 'x' } })) === true)
 { const r = await addEmployee('1001', 'مكرر', { expect: 'مستخدم لموظف آخر' }); check('employees: duplicate code rejected', r === true, r) }
 check('employees: add #2', (await addEmployee('1002', 'خالد سعد', { extra: { department_id: 'الإدارة الطبية', hire_date: '2026-09-01' } })) === true)
-{ const r = await addEmployee('1008', 'من النموذج', { extra: { mobile: '0511111111' } }); check('employees: added from «بيانات الموظف» alone', r === true, r) }
-await ew.locator('tbody tr', { hasText: '1008' }).click(); await btn(ew, 'حذف').click(); await p.waitForTimeout(150); await yes(); await p.waitForTimeout(150)
+{ const r = await addEmployee('1008', 'بدون تاريخ تعيين'); check('employees: added without a hire date', r === true, r) }
+await ew.locator('tbody tr', { hasText: '1008' }).locator('[data-a=del]').click(); await p.waitForTimeout(150); await yes(); await p.waitForTimeout(150)
 check('employees: add #3', (await addEmployee('1003', 'سارة محمد', { extra: { department_id: 'الإدارة الطبية', hire_date: '2026-09-01' } })) === true)
 check('employees: 4th blocked in trial', (await addEmployee('1004', 'رابع', { expect: '3 موظفين فقط' })) === true)
-check('employees: list shows 3', (await ew.locator('tbody tr').count()) === 3)
+check('employees: list shows 3', (await rowCount(ew)) === 3)
 await findEmp('سارة')
-check('employees: search by name', (await ew.locator('tbody tr').count()) === 1)
+check('employees: search by name', (await rowCount(ew)) === 1)
 await findEmp('1002')
-check('employees: search by code', (await ew.locator('tbody tr').count()) === 1)
+check('employees: search by code', (await rowCount(ew)) === 1)
 await findEmp('')
 await snap('employees-list')
 await ew.locator('tbody tr', { hasText: '1001' }).dblclick(); await p.waitForTimeout(250)
 let ef = win('تعديل موظف')
 check('employees: double-click opens edit form with data', (await ef.locator('[data-f=name_en]').inputValue()) === 'Ahmed Ali' && (await ef.locator('[data-f=section_id] option:checked').textContent()) === 'قسم الطوارئ')
 await ef.locator('[data-f=mobile]').fill('0555555555'); await btn(ef, 'حفظ').click(); await p.waitForTimeout(250); await okMsg()
-await ew.locator('tbody tr', { hasText: '1001' }).click(); await p.waitForTimeout(100)
-check('employees: selecting a row fills «بيانات الموظف»', (await ew.locator('[data-f=name_ar]').inputValue()) === 'أحمد علي' && (await ew.locator('[data-f=mobile]').inputValue()) === '0555555555')
-await ew.locator('[data-f=name_en]').fill('Ahmed A.'); await btn(ew, 'حفظ').click(); await p.waitForTimeout(250); check('employees: inline edit saved', /تم الحفظ/.test(await okMsg()) && (await ew.locator('tbody tr', { hasText: '1001' }).textContent()).includes('Ahmed A.'))
-await ew.locator('#emp-settings').click(); await p.waitForTimeout(150)
-check('employees: the cog drops Apex «الإعدادات» (warning + 5 options), not a form', (await ew.locator('.emp-set').isVisible()) && (await ew.locator('.emp-set .es-row').count()) === 5 && /يجب إلغاء الحركات/.test(await ew.locator('.emp-set .es-warn').textContent()) && (await p.locator('.win', { has: p.locator('.cap', { hasText: 'اضافة موظف' }) }).count()) === 0)
-check('employees: «الإعدادات» shows the employee\'s options', await ew.locator('.emp-set [data-f=ot_after]').isChecked())
-await ew.locator('.emp-set [data-f=ot_before]').check(); await btn(ew, 'حفظ').click(); await p.waitForTimeout(250); await okMsg()
-await ew.locator('.emp-set .es-x').click(); check('employees: red ✕ closes «الإعدادات»', await ew.locator('.emp-set').isHidden())
+await ew.locator('tbody tr', { hasText: '1001' }).locator('[data-a=edit]').click(); await p.waitForTimeout(250)
+ef = win('تعديل موظف'); check('employees: pencil opens the saved data', (await ef.locator('[data-f=mobile]').inputValue()) === '0555555555')
+await ef.locator('[data-f=ot_before]').check(); await btn(ef, 'حفظ').click(); await p.waitForTimeout(250); await okMsg()
 await ew.locator('tbody tr', { hasText: '1001' }).dblclick(); await p.waitForTimeout(250)
 ef = win('تعديل موظف'); check('employees: edit saved', (await ef.locator('[data-f=mobile]').inputValue()) === '0555555555' && (await ef.locator('[data-f=ot_before]').isChecked())); await closeWin(ef)
-await btn(ew, 'حذف').click(); await p.waitForTimeout(150); check('employees: delete asks confirmation', /حذف الموظف/.test(await dlgText()))
+check('employees: back on the list after the form', await ew.isVisible())
+await ew.locator('tbody tr', { hasText: '1001' }).locator('[data-a=del]').click(); await p.waitForTimeout(150); check('employees: delete asks confirmation', /حذف الموظف/.test(await dlgText()))
 await p.locator('.dlg-backdrop').last().getByRole('button', { name: 'لا' }).click()
 await closeWin(ew)
 // shift group in use cannot be deleted
-await menu('البيانات الأساسية', 'مواعيد العمل'); w = win('مجموعات أوقات الدوام'); await w.locator('tbody tr').first().click()
-await btn(w, 'حذف').click(); await p.waitForTimeout(150); check('shift groups: in-use group cannot be deleted', /مستخدم/.test(await okMsg())); await closeWin(w)
+await menu('البيانات الأساسية', 'مواعيد العمل'); w = win('أوقات العمل')
+await w.locator('tbody tr[data-id]').first().locator('[data-a=del]').click(); await p.waitForTimeout(150); check('shift groups: in-use group cannot be deleted', /مستخدم/.test(await okMsg())); await closeWin(w)
 // lists: job in use cannot be deleted
-await menu('البيانات الأساسية', 'قوائم البرنامج'); w = win('قوائم البرنامج'); await w.locator('tbody tr', { has: p.locator('input[value="ممرض م"], input[value="ممرض"]') }).first().click()
-await btn(w, 'حذف').click(); await p.waitForTimeout(150); check('lists: job in use cannot be deleted', /مستخدم/.test(await okMsg())); await closeWin(w)
+await menu('البيانات الأساسية', 'قوائم البرنامج'); w = win('الوظائف')
+await w.locator('tbody tr', { hasText: 'ممرض' }).first().locator('[data-a=del]').click(); await p.waitForTimeout(150); check('lists: job in use cannot be deleted', /مستخدم/.test(await okMsg())); await closeWin(w)
 
 // ── 5. procedures ─────────────────────────────────────────
 fs.writeFileSync(`${UD}/attlog.dat`, [
@@ -514,7 +488,6 @@ await p.locator('#lv-f').fill('2026-09-21'); await p.locator('#lv-t').fill('2026
 check('leaves: overlapping leave refused', /متداخلة/.test(await okMsg()))
 await closeWin(w)
 await menu('الإجراءات', 'إضافة أذونات'); w = win('أذونات الموظفين'); await snap('permissions')
-check('permissions: Apex toolbar sequence', (await w.locator('.toolbar button span').allTextContents()).map((t) => t.trim()).join('|') === 'جديد|حفظ|بحث|حذف|طباعه|إغلاق')
 await w.locator('#pm-emp').selectOption({ index: 2 }); await w.locator('#pm-date').fill('2026-09-19'); await w.locator('#pm-date').dispatchEvent('change'); await p.waitForTimeout(100)
 check('permissions: no «من / إلى» or «التصنيف» (Apex)', (await w.locator('#pm-from, #pm-to, #pm-type').count()) === 0)
 await w.locator('[name=pm-kind][value=day]').check(); await p.waitForTimeout(100)
@@ -619,13 +592,13 @@ await w.locator('#pe-pw').fill('wrong'); await w.locator('#pe-go').click(); awai
 await w.locator('#pe-pw').fill('start1'); await w.locator('#pe-go').click(); await p.waitForTimeout(200); await yes(); check('purge employee: done', /تم حذف جميع بيانات 1 موظف/.test(await okMsg())); await closeWin(w)
 
 // ── 8. users, system, backup, register ────────────────────
-await menu('الاعدادات', 'صلاحيات المستخدمين', 'اعدادات المستخدمين'); w = win('صلاحيات المستخدمين'); await snap('roles')
+await menu('الاعدادات', 'صلاحيات المستخدمين'); w = win('الصلاحيات'); await snap('roles')
 check('roles: built-in «مدير النظام» locked with every box ticked', (await w.locator('.screens input[data-a]:not(:checked)').count()) === 0 && (await w.locator('.screens input[data-a]:not([disabled])').count()) === 0)
 await btn(w, 'جديد').click(); await btn(w, 'حفظ').click(); check('roles: name required', /مطلوب/.test(await okMsg()))
 await w.locator('#ro-ar').fill('موارد بشرية'); await w.locator('#ro-en').fill('HR'); await btn(w, 'حفظ').click(); await okMsg()
 check('roles: role added', (await w.locator('#ro-list tr').count()) === 2)
 await closeWin(w)
-await menu('الاعدادات', 'إدارة المستخدمين', 'اعدادات المستخدمين'); w = win('إدارة المستخدمين'); await snap('users')
+await menu('الاعدادات', 'إدارة المستخدمين'); w = p.locator('.win[data-win=users]'); await snap('users')
 await btn(w, 'جديد').click(); await w.locator('#us-login').fill('hr'); await w.locator('#us-name').fill('موظف الموارد'); await w.locator('#us-role').selectOption({ label: 'موارد بشرية' })
 await w.locator('#us-pw').fill('12'); await w.locator('#us-pw2').fill('12'); await btn(w, 'حفظ').click(); check('users: short password rejected', /4 أحرف/.test(await okMsg()))
 await w.locator('#us-pw').fill('1234'); await w.locator('#us-pw2').fill('1235'); await btn(w, 'حفظ').click(); check('users: mismatch rejected', /غير متطابقتين/.test(await okMsg()))
@@ -635,24 +608,24 @@ check('users: passwords never shown', !/1234/.test(await w.locator('#us-list').t
 await w.locator('#us-list tr').first().click(); await btn(w, 'حذف').click(); await p.waitForTimeout(150); check('users: current / last admin cannot be deleted', /آخر مدير|المستخدم الحالي/.test(await okMsg()))
 await w.locator('#us-list tr').first().click(); await w.locator('#us-role').selectOption({ label: 'موارد بشرية' }); await btn(w, 'حفظ').click(); check('users: last admin cannot lose the admin role', /آخر مدير/.test(await okMsg()))
 await w.locator('#us-list tr').first().click(); await w.locator('#us-pw').fill('admin1'); await w.locator('#us-pw2').fill('admin1'); await btn(w, 'حفظ').click(); await okMsg(); await closeWin(w)
-await menu('الاعدادات', 'اعدادات النظام'); w = win('إعدادات النظام'); check('system settings: Apex «إعدادات عامه» — 2 settings', (await w.locator('.sys-set .rules .row').count()) === 2 && (await w.locator('#s-ignore').inputValue()) === '0' && (await w.locator('#s-shifts option').allTextContents()).join('|') === 'وردية|ورديتان|ثلاث ورديات|أربعة ورديات')
+await menu('الاعدادات', 'اعدادات النظام'); w = win('اعدادات الحضور'); check('system settings: «إعدادات عامه» — 2 settings', (await w.locator('.sys-set .rules .row').count()) === 2 && (await w.locator('#s-ignore').inputValue()) === '0' && (await w.locator('#s-shifts option').allTextContents()).join('|') === 'وردية|ورديتان|ثلاث ورديات|أربعة ورديات')
 await w.locator('#s-ignore').fill('3'); await btn(w, 'حفظ').click(); await p.waitForTimeout(200); await okMsg()
 check('system settings: saved, other settings kept', await p.evaluate(() => Engine.settings().ignore_min === 3)); await w.locator('#s-ignore').fill('0'); await btn(w, 'حفظ').click(); await p.waitForTimeout(200); await okMsg(); await snap('system'); await closeWin(w)
 await p.evaluate(() => openBackup()); await p.waitForTimeout(300); w = win('إنشاء نسخة إحتياطية'); await w.locator('#bk-go').click(); await p.waitForTimeout(200)
 check('backup: file written', /تم حفظ/.test(await okMsg()) && fs.existsSync(`${UD}/manual-backup.sqlite`)); await closeWin(w)
 check('backup: automatic daily backup exists', fs.readdirSync(`${UD}/backups`).length >= 0)
-await menu('مساعده', 'عن الشركة'); { const m = await okMsg(); check('about: version', m.includes(JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).version)); check('about: data folder', m.includes('mt-fulltest')) }
-await menu('مساعده', 'فهرس المحتويات'); w = win('دليل الاستخدام')
+await p.evaluate(() => { showAbout() }); await p.waitForTimeout(200); { const m = await okMsg(); check('about: version', m.includes(JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).version)); check('about: data folder', m.includes('mt-fulltest')) }
+await p.locator('#rail-help').click(); await p.waitForTimeout(300); w = win('دليل الاستخدام')
 check('guide: opens with all sections', (await w.locator('.guide section').count()) >= 10); await snap('guide')
 await w.locator('.guide nav a').last().click(); await p.waitForTimeout(300); await closeWin(w)
 
 // Apex «أدوات ← تعديل بيانات الدخول»
-await menu('ادوات', 'تعديل بيانات الدخول'); w = win('تعديل بيانات الدخول')
+await p.evaluate(() => openChangeLogin()); await p.waitForTimeout(200); w = win('تعديل بيانات الدخول')
 await w.locator('#cl-old').fill('wrong'); await w.locator('#cl-new').fill('abcd'); await w.locator('#cl-new2').fill('abcd'); await w.locator('#cl-ok').click(); await p.waitForTimeout(150)
 check('change login: current password checked', /الحالية غير صحيحة/.test(await okMsg()))
 await w.locator('#cl-old').fill('admin1'); await w.locator('#cl-new2').fill('abce'); await w.locator('#cl-ok').click(); await p.waitForTimeout(150)
 { const m = await okMsg(); check('change login: new passwords must match', /غير متطابقتين/.test(m), m) } await w.locator('#cl-cancel').click(); await p.waitForTimeout(150)
-await menu('مساعده', 'تسجيل المنتج'); await snap('register')
+await p.evaluate(() => { openRegister() }); await p.waitForTimeout(300); await snap('register')
 const req = await p.locator('#req').inputValue()
 check('register: request code format', /^[0-9A-F]{4}(-[0-9A-F]{4}){4}$/.test(req), req)
 await p.locator('#lic').fill('garbage.Gold'); await p.locator('.dlg').getByRole('button', { name: 'تسجيل' }).click(); await p.waitForTimeout(200)
@@ -660,20 +633,17 @@ check('register: invalid licence rejected', /غير صحيح/.test(await p.locat
 const lic = execFileSync('node', [`${ROOT}/tools/keygen.js`, req, 'Gold']).toString().trim()
 await p.locator('#lic').fill(lic); await p.locator('.dlg').getByRole('button', { name: 'تسجيل' }).click(); await p.waitForTimeout(300)
 check('register: valid licence accepted', /تم تسجيل البرنامج/.test(await okMsg()))
-check('register: caption Registered', /Registered/.test(await p.locator('#caption-text').textContent()) && !/Unregistered/.test(await p.locator('#caption-text').textContent()))
-check('register: trial banner hidden', (await p.locator('.trial').count()) === 0)
+check('register: notice gone from the banner', !/تجريبية/.test(await p.locator('#banner').textContent()))
 await menu('التقارير', 'الغياب خلال فترة'); check('registered: previously locked report opens', await repWin('الغياب خلال فترة').isVisible()); await closeWin(repWin('الغياب خلال فترة'))
 
 // ── 8b. v0.2 features (registered: no employee limit) ─────
 const openGroupTimes = async (name) => {
-  await menu('البيانات الأساسية', 'مواعيد العمل'); const gw = win('مجموعات أوقات الدوام')
-  await gundo(gw, { add: false }) // «المواعيد» works on a saved group (viewing)
-  await gw.locator('tbody tr', { has: p.locator(`input[value="${name}"]`) }).first().click()
-  await btn(gw, 'المواعيد').click(); await p.waitForTimeout(300)
+  await menu('البيانات الأساسية', 'مواعيد العمل'); const gw = win('أوقات العمل')
+  await gw.locator('tbody tr[data-id]', { hasText: name }).first().locator('[data-x=times]').click(); await p.waitForTimeout(300)
   return [gw, win('إعداد مواعيد العمل')]
 }
 // new shift groups: split, night (ends the next day), open
-await menu('البيانات الأساسية', 'مواعيد العمل'); w = win('مجموعات أوقات الدوام')
+await menu('البيانات الأساسية', 'مواعيد العمل'); w = win('أوقات العمل')
 for (const g of [{ name_ar: 'مقسم' }, { name_ar: 'ليلي' }, { name_ar: 'مفتوح', open_shift: 1 }]) {
   const r = lastRow(w)
   await r.locator('[data-f=name_ar]').fill(g.name_ar)
@@ -681,7 +651,6 @@ for (const g of [{ name_ar: 'مقسم' }, { name_ar: 'ليلي' }, { name_ar: '�
   await gsave(w)
 }
 check('shift groups: Apex columns only (no rotating / start date)', (await w.locator('thead th').allTextContents()).map((x) => x.trim()).filter(Boolean).join('|') === '#|الاسم العربي|الاسم الأجنبي|الإجمالي|دوام مفتوح')
-check('shift groups: «المواعيد» off while adding', await btn(w, 'المواعيد').isDisabled())
 await closeWin(w)
 // split shift: 2 periods every working day
 let [gw, t] = await openGroupTimes('مقسم')
@@ -849,10 +818,64 @@ await p.evaluate(() => openAuditLog()); await p.waitForTimeout(300); w = win('س
 check('audit log: records logins, posting, employee edits, permissions', /تسجيل دخول/.test(audit) && /ترحيل الحركات/.test(audit) && /تعديل موظف/.test(audit) && /تعديل صلاحيات/.test(audit))
 await snap('v2-audit'); await closeWin(w)
 
+// ── 8b2. devices on the network: ADMS (a fake device posting to /iclock) and pull over 4370 ──
+{
+  await p.evaluate(() => { window.bridge.gateSettings({ port: 18081 }) }); await p.waitForTimeout(400)
+  const base = 'http://127.0.0.1:18081/iclock', SN = 'TEST-SN1'
+  const device = (path, body) => fetch(`${base}/${path}`, body ? { method: 'POST', body } : {}).then((r) => r.text())
+  const hello = await device(`cdata?SN=${SN}&options=all`)
+  check('adms: handshake answers the device its options', /ATTLOGStamp=0/.test(hello) && /Realtime=1/.test(hello) && new RegExp(`GET OPTION FROM: ${SN}`).test(hello), hello)
+  const n = () => p.evaluate(() => DB.one("SELECT COUNT(*) AS n FROM punches WHERE emp_code = '1001' AND ts LIKE '2026-10-05%'").n)
+  const lines = '1001\t2026-10-05 08:00:00\t0\t1\t0\n1001\t2026-10-05 16:00:00\t1\t1\t0\n'
+  check('adms: punches acknowledged after they are on disk', (await device(`cdata?SN=${SN}&table=ATTLOG&Stamp=1`, lines)) === 'OK: 2')
+  await p.waitForTimeout(1200)
+  check('adms: punches reach the database by themselves', (await n()) === 2, String(await n()))
+  check('adms: stored as device punches', await p.evaluate(() => DB.one("SELECT source FROM punches WHERE emp_code = '1001' AND ts = '2026-10-05 08:00:00'")?.source === 'device'))
+  check('adms: the same punches sent again are not repeated', (await device(`cdata?SN=${SN}&table=ATTLOG&Stamp=1`, lines)) === 'OK: 2')
+  await p.waitForTimeout(1200)
+  check('adms: still 2 punches after re-sending', (await n()) === 2, String(await n()))
+  check('adms: a bad line is skipped, the rest kept', (await device(`cdata?SN=${SN}&table=ATTLOG`, 'garbage\n1001\t2026-10-05 12:00:00\t0\t1\n')) === 'OK: 1')
+  await p.waitForTimeout(1200)
+  check('adms: 3 punches now', (await n()) === 3, String(await n()))
+  check('adms: other tables are acknowledged and ignored', (await device(`cdata?SN=${SN}&table=OPERLOG`, 'x')) === 'OK')
+  check('adms: another path is refused', (await fetch('http://127.0.0.1:18081/other').then((r) => r.status)) === 404)
+  await device(`cdata?SN=${SN}&table=ATTLOG`, 'TEST-77\t2026-10-05 09:00:00\t0\t1\n'); await p.waitForTimeout(1200)
+  check('adms: an unknown number becomes a new employee, as when reading a device', await p.evaluate(() => DB.one("SELECT name_ar FROM employees WHERE code = 'TEST-77'")?.name_ar === 'موظف جديد'))
+  await p.evaluate(async () => { DB.run("DELETE FROM punches WHERE emp_code IN ('TEST-77') OR ts LIKE '2026-10-05%'"); DB.run("DELETE FROM employees WHERE code = 'TEST-77'"); await DB.flush() })
+  // «الاجهزة» shows both ways
+  await openPage(p, 'الاجهزة'); w = win('الاجهزة'); await p.waitForTimeout(400); await snap('devices-adms')
+  check('devices page: this PC\'s address and port to write in the device', /\d+\.\d+\.\d+\.\d+|غير متصل/.test(await w.locator('#ds-ip').textContent()) && (await w.locator('#ds-port').inputValue()) === '18081')
+  check('devices page: receiver ready', /جاهز/.test(await w.locator('#ds-state').textContent()), await w.locator('#ds-state').textContent())
+  check('devices page: the device that connected, with today\'s count', /TEST-SN1/.test(await w.locator('#ds-list tbody').textContent()))
+  check('devices page: the pull way (port 4370) beside it', (await w.locator('.dev-form #dv-ip').count()) === 1 && /4370/.test(await w.locator('.dev-form legend').textContent()))
+  // the clock: the push device gets the command at its next poll
+  check('adms: no command waiting at first', (await device(`getrequest?SN=${SN}`)) === 'OK')
+  await w.locator('#ds-list [data-clock]').first().click(); await p.waitForTimeout(200); await okMsg()
+  check('devices page: «مزامنة ساعة الجهاز» queues SET OPTION DateTime', /^C:\d+:SET OPTION DateTime=\d+$/.test(await device(`getrequest?SN=${SN}`)))
+  check('adms: the command goes once', (await device(`getrequest?SN=${SN}`)) === 'OK')
+  // … and a device read over the network gets it directly
+  const { startMockZK } = await import(`${ROOT}/tools/mock-zk.mjs`)
+  const zk = await startMockZK({ port: 14370 })
+  await p.waitForTimeout(150)
+  const ok = await p.evaluate(() => window.bridge.deviceClock({ ip: '127.0.0.1', port: 14370, key: 0 }))
+  check('pull device: clock set over port 4370', ok.ok && zk.state.commands.includes(202), JSON.stringify(ok))
+  zk.server.close()
+  // the address changed since the devices were set up
+  const cfg = `${UD}/gate/gate.json`
+  await closeWin(w)
+  fs.writeFileSync(cfg, JSON.stringify({ receiver: true, port: 18081, ip: '10.254.254.254' }))
+  await p.evaluate(async () => { await window.bridge.gateSettings({}) })
+  check('gate file: keeps the port', JSON.parse(fs.readFileSync(cfg, 'utf8')).port === 18081)
+}
+// the daily copy + restore are on «الاعدادات العامة»
+await openPage(p, 'الاعدادات العامة'); w = win('الاعدادات العامة'); await snap('general-settings')
+check('general settings: backup, restore, licence, guide', (await w.locator('#gs-backup').count()) === 1 && (await w.locator('#gs-restore').count()) === 1 && (await w.locator('#gs-register').count()) === 1 && (await w.locator('#gs-guide').count()) === 1)
+await w.locator('#gs-restore').click(); await p.waitForTimeout(200); check('general settings: «استعادة» opens the restore page', await win('إستعادة قاعدة البيانات').isVisible()); await closeWin(win('إستعادة قاعدة البيانات')); await closeWin(w)
+
 // ── 8c. backup → change → restore ─────────────────────────
 await p.evaluate(() => openBackup()); await p.waitForTimeout(300); w = win('إنشاء نسخة إحتياطية'); await w.locator('#bk-go').click(); await p.waitForTimeout(200); await okMsg(); await closeWin(w)
 fs.copyFileSync(`${UD}/manual-backup.sqlite`, `${UD}/restore-me.sqlite`)
-await menu('البيانات الأساسية', 'المشاريع'); w = win('المشـــاريع'); await lastRow(w).locator('[data-f=name_ar]').fill('مشروع مؤقت'); await gsave(w)
+await menu('البيانات الأساسية', 'المشاريع'); w = win('المشاريع'); await addRow(w, { name_ar: 'مشروع مؤقت' })
 check('restore: project added after the backup', (await rowCount(w)) === 2); await closeWin(w)
 await app.evaluate(({ dialog }, f) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [f] }) }, `${UD}/restore-me.sqlite`)
 fs.writeFileSync(`${UD}/not-a-db.sqlite`, 'hello')
@@ -868,7 +891,7 @@ await w.locator('#rs-agree').check(); await w.locator('#rs-pw').fill('wrong'); a
 check('restore: admin password required', /غير صحيحة/.test(await okMsg()))
 await w.locator('#rs-pw').fill('admin1'); await w.locator('#rs-go').click(); await p.waitForTimeout(150); await yes(); await p.waitForTimeout(400)
 check('restore: backup restored', /تم استرجاع/.test(await okMsg()))
-await menu('البيانات الأساسية', 'المشاريع'); w = win('المشـــاريع')
+await menu('البيانات الأساسية', 'المشاريع'); w = win('المشاريع')
 check('restore: data is back to the backup (temporary project gone)', (await rowCount(w)) === 1); await closeWin(w)
 // logout returns to the login screen
 await menu('ملف', 'تسجيل الخروج')
@@ -879,34 +902,31 @@ check('logout: login again', await p.locator('#home').isVisible())
 // ── 9. restart: data persisted, password changed, licence kept ──
 await app.close()
 const app2 = await electron.launch({ executablePath: `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT })
-const p2 = await app2.firstWindow(); await p2.waitForSelector('text=شاشة الدخول')
-await p2.locator('.dlg').getByRole('button', { name: 'موافق' }).click(); await p2.waitForTimeout(300)
+const p2 = await app2.firstWindow(); await p2.waitForSelector('text=تسجيل الدخول')
+await loginBtn(p2).click(); await p2.waitForTimeout(300)
 check('restart: old empty password no longer works', /غير صحيحة/.test(await p2.locator('.dlg .err').textContent()))
-await p2.locator('#user').fill('hr'); await p2.locator('#pass').fill('1234'); await p2.locator('.dlg').getByRole('button', { name: 'موافق' }).click(); await p2.waitForTimeout(700)
-check('permissions: restricted user sees only permitted menus', (await p2.locator('#menubar .menu').count()) === 4 && (await p2.locator('#menubar .menu > button', { hasText: 'البيانات الأساسية' }).count()) === 1)
-await p2.locator('#menubar .menu > button', { hasText: 'البيانات الأساسية' }).click(); await p2.waitForTimeout(150)
-check('permissions: only «الموظفين» inside', (await p2.locator('.menu.open .drop button').count()) === 1)
-await p2.locator('.menu.open .drop button', { hasText: 'الموظفون' }).click(); await p2.waitForTimeout(300)
-{ const ew = p2.locator('.win', { has: p2.locator('.cap', { hasText: 'الموظفون' }) }).last()
-  const dis = async (k) => ew.locator(`.toolbar button[data-key=${k}]`).first().isDisabled()
-  check('permissions: view+print only → جديد / حذف disabled, طباعة enabled', (await dis('new')) && (await dis('del')) && !(await dis('print')), `new=${await dis('new')} del=${await dis('del')} print=${await dis('print')}`)
-  await ew.locator('.toolbar button[data-key=close]').click() }
-await p2.locator('body').click({ position: { x: 5, y: 300 } })
-await p2.locator('.tile', { hasText: 'التجهيز' }).click(); await p2.waitForTimeout(150)
-await p2.locator('.tile', { hasText: 'مواعيد العمل' }).click(); await p2.waitForTimeout(150)
-check('permissions: home tile blocked without permission', /ليس لديك صلاحية/.test(await p2.locator('.dlg-backdrop .body').last().textContent()))
+await p2.locator('#user').fill('hr'); await p2.locator('#pass').fill('1234'); await loginBtn(p2).click(); await p2.waitForTimeout(700)
+check('permissions: restricted user sees only permitted sections', (await p2.locator('#rail [data-section]').count()) === 1 && (await p2.locator('#rail [data-section=basic]').count()) === 1)
+check('permissions: only «الموظفين» inside', (await p2.locator('#rail [data-section=basic] [data-page]').count()) === 1)
+await openPage(p2, 'الموظفين')
+{ const ew = p2.locator('.win[data-win=employees]')
+  check('permissions: view+print only → no «اضافة», no pencil / trash, «تصدير» on', (await ew.locator('.toolbar button[data-key=new]').first().isDisabled()) && (await ew.locator('[data-a=edit], [data-a=del]').count()) === 0 && !(await ew.locator('.tb-btn[data-key=print]').isDisabled()))
+  await ew.evaluate((el) => { UI.close(el.dataset.win) }) }
+await p2.evaluate(() => Nav.go('البيانات الاساسية', ['أوقات العمل', 'البيانات الأساسية/مواعيد العمل', () => openShiftGroups()])); await p2.waitForTimeout(200)
+check('permissions: a screen without permission is refused', /ليس لديك صلاحية/.test(await p2.locator('.dlg-backdrop .body').last().textContent()))
 await app2.close()
 const app3 = await electron.launch({ executablePath: `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT })
-const p3 = await app3.firstWindow(); await p3.waitForSelector('text=شاشة الدخول')
+const p3 = await app3.firstWindow(); await p3.waitForSelector('text=تسجيل الدخول')
 check('login remembers the last user', (await p3.locator('#user').inputValue()) === 'hr')
-await p3.locator('#user').fill('أ'); await p3.locator('#pass').fill('admin1'); await p3.locator('.dlg').getByRole('button', { name: 'موافق' }).click(); await p3.waitForTimeout(700)
+await p3.locator('#user').fill('أ'); await p3.locator('#pass').fill('admin1'); await loginBtn(p3).click(); await p3.waitForTimeout(700)
 check('restart: login with new password', await p3.locator('#home').isVisible())
-check('restart: licence kept', /Registered/.test(await p3.locator('#caption-text').textContent()))
-await p3.locator('#menubar .menu > button', { hasText: 'البيانات الأساسية' }).click(); await p3.locator('.menu.open .drop button', { hasText: 'الموظفون' }).first().click(); await p3.waitForTimeout(300)
-check('restart: employees persisted (5 after purge)', (await p3.locator('.win tbody tr').count()) === 5)
+check('restart: licence kept', await p3.evaluate(() => licence.ok) && !/تجريبية/.test(await p3.locator('#banner').textContent()))
+await openPage(p3, 'الموظفين')
+check('restart: employees persisted (5 after purge)', (await p3.locator('.win tbody tr[data-id]').count()) === 5)
 check('restart: automatic daily backup created', fs.existsSync(`${UD}/backups`) && fs.readdirSync(`${UD}/backups`).length >= 1)
 await app3.close()
 
 check('no page errors during the whole run', errs.length === 0, errs.slice(0, 3).join(' || '))
-console.log(results.join('\n'))
+fs.rmSync(UD, { recursive: true, force: true }) // the TEST- data goes with the session
+check('test data removed', !fs.existsSync(UD))
 console.log(`\nTOTAL: ${pass} passed, ${fail} failed · screenshots: ${shot} in ${SHOTS}`)

@@ -34,7 +34,7 @@ const openLists = () => openList('job')
 // حفظ confirms and selects the saved node; إهمال asks, then drops the changes. Numbers as in Apex:
 // a إدارة is 1, 2, 3…, its sections 11, 12… (21, 22… under the second).
 function openDepartments() {
-  UI.openWindow('departments', 'قوائم الأقسام والإدارات', { width: 830, height: 540 }, (body, win) => {
+  UI.openWindow('departments', 'الإدارات والأقسام', { width: 830, height: 540 }, (body, win) => {
     let cur = null      // the record shown: a department row, or {parent_id} while adding
     let adding = false, dirty = false
     const bar = UI.toolbar([
@@ -159,7 +159,7 @@ function openDepartments() {
 
 function openProjects() {
   openGridWindow({
-    id: 'projects', title: 'المشـــاريع', table: 'projects', width: 760,
+    id: 'projects', title: 'المشاريع', table: 'projects', width: 760,
     buttons: ['new', 'save', 'undo', 'del', 'print', 'close'], idLabel: 'كود المشروع',
     columns: [{ field: 'name_ar', label: 'اسم المشـــروع عربى', required: true }, { field: 'name_en', label: 'اسم المشــــروع انجليزى', type: 'en' }],
     beforeDelete: (r) => inUse('employees', 'project_id', r.id, 'بيانات الموظفين'),
@@ -171,7 +171,7 @@ function openEmployeeGroups() {
     id: 'employee-groups', title: 'مجموعات الموظفين', table: 'employee_groups', width: 760,
     buttons: ['members', 'new', 'save', 'undo', 'del', 'print', 'close'],
     // Apex: «الموظفون» (or double-click) opens the members screen
-    extraButtons: [{ key: 'members', label: 'الموظفون', icon: 'people', onClick: (ctx) => {
+    extraButtons: [{ key: 'members', label: 'الموظفون', icon: 'people', viewOnly: true, onClick: (ctx) => {
       const r = ctx.currentRow
       if (!r || !r.id) return UI.message('اختر مجموعة محفوظة أولاً')
       openGroupMembers(r)
@@ -238,7 +238,7 @@ function openGroupMembers(group) {
 
 function openHolidays() {
   openGridWindow({
-    id: 'holidays', title: 'قائمة العطلات الرسمية', table: 'holidays', orderBy: 'from_date', width: 900,
+    id: 'holidays', title: 'العطلات الرسمية', table: 'holidays', orderBy: 'from_date', width: 900,
     buttons: ['new', 'save', 'undo', 'del', 'print', 'close'],
     columns: [
       { field: 'name_ar', label: 'الاسم العربي', required: true },
@@ -411,7 +411,7 @@ function openDevices() {
 
 function openShiftGroups() {
   openGridWindow({
-    id: 'shift-groups', title: 'مجموعات أوقات الدوام', table: 'shift_groups',
+    id: 'shift-groups', title: 'أوقات العمل', table: 'shift_groups',
     help: 'أدخل اسم المجموعة ثم «حفظ»، وحدد مواعيدها من زر «المواعيد».',
     columns: [
       { field: 'name_ar', label: 'الاسم العربي', required: true },
