@@ -12,7 +12,7 @@ const NAMES = ['layout-dashboard', 'clipboard-list', 'clock', 'user-cog', 'setti
   'building', 'log-out', 'search', 'circle-user-round', 'map-pin', 'circle-help', 'funnel', 'external-link', 'pencil', 'trash-2', 'ellipsis-vertical', 'x', 'chevron-left',
   'chevron-right', 'chevrons-left', 'chevrons-right', 'download', 'printer', 'save', 'file-spreadsheet', 'file-text', 'upload', 'check', 'undo-2', 'refresh-cw', 'key-round',
   'lock', 'user', 'database', 'database-backup', 'book-open', 'cloud-off', 'wifi', 'alarm-clock', 'user-check', 'user-x', 'triangle-alert', 'file-minus', 'send', 'badge-check',
-  'list', 'heart-handshake', 'sticky-note', 'hand', 'circle-alert', 'circle-check']
+  'list', 'heart-handshake', 'sticky-note', 'hand', 'circle-alert', 'circle-check', 'school', 'message-circle']
 const icons = {}
 for (const n of NAMES) icons[n] = fs.readFileSync(require.resolve(`lucide-static/icons/${n}.svg`), 'utf8')
   .replace(/<!--.*?-->/s, '').replace(/\s+/g, ' ').replace(/ (width|height)="24"/g, '').replace(/class="[^"]*"/, 'class="lucide"').trim()

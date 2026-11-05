@@ -25,6 +25,14 @@ contextBridge.exposeInMainWorld('bridge', {
   gateClock: (sn) => ipcRenderer.invoke('gate:clock', sn),
   gateSettings: (patch) => ipcRenderer.invoke('gate:settings', patch),
   onGate: (cb) => ipcRenderer.on('gate:new', () => cb()),
+  // school: guardian messages + WhatsApp
+  gateRoster: (r) => ipcRenderer.invoke('gate:roster', r),
+  gateLog: (limit) => ipcRenderer.invoke('gate:log', limit),
+  gateAbsence: () => ipcRenderer.invoke('gate:absence'),
+  gateTest: (phone) => ipcRenderer.invoke('gate:test', phone),
+  gateWa: (action) => ipcRenderer.invoke('gate:wa', action),
+  onGateChanged: (cb) => ipcRenderer.on('gate:changed', () => cb()),
+  noTerms: process.env.MASAR_NO_TERMS === '1',
   transferDevice: (req, onProgress) => {
     const h = (_e, p) => onProgress?.(p)
     ipcRenderer.on('device:transfer-progress', h)

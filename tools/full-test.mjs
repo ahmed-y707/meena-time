@@ -88,9 +88,9 @@ check('shell: embedded Arabic font', await p.evaluate(() => /Noto Kufi Arabic/.t
 check('shell: nothing is loaded from the internet', await p.evaluate(() => performance.getEntriesByType('resource').every((r) => !/^https?:/.test(r.name))))
 check('banner: trial notice when unregistered', /تجريبية/.test(await p.locator('#banner').textContent()))
 check('caption: version matches package.json', (await p.title()).includes(JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).version))
-check('package: named Masar Time 2.0.0', JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).productName === 'Masar Time' && JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).version === '2.0.0')
+check('package: named Masar Time School 2.0.0', JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).productName === 'Masar Time School' && JSON.parse(fs.readFileSync(`${ROOT}/package.json`, 'utf8')).version === '2.0.0')
 // the sidebar follows routes.ts; what needs the internet is not in it
-check('sidebar: sections in the site\'s order', (await p.locator('#rail nav > [data-page], #rail nav > .rail-group > [data-toggle]').allTextContents()).map((t) => t.trim()).join('|') === 'لوحة القيادة|البيانات الاساسية|الحضور والانصراف|المستخدمين|الاعدادات')
+check('sidebar: sections in the site\'s order', (await p.locator('#rail nav > [data-page], #rail nav > .rail-group > [data-toggle]').allTextContents()).map((t) => t.trim()).join('|') === 'لوحة القيادة|البيانات الاساسية|الحضور والانصراف|المدرسة|المستخدمين|الاعدادات')
 {
   const all = await p.evaluate(() => [...document.querySelectorAll('#rail [data-page]')].map((b) => b.dataset.page))
   check('sidebar: no online pages', !all.some((n) => /الجوال|المواقع|الاشتراك|الطلبات|الربط بالموقع/.test(n)), all.join())

@@ -1,6 +1,6 @@
 // Electron main process: one window, the database file in the user's data
 // folder (no XAMPP, no fixed drive), and the licence check.
-const { app, BrowserWindow, ipcMain, Menu, dialog, safeStorage, screen } = require('electron')
+const { app, BrowserWindow, ipcMain, Menu, dialog, safeStorage, screen, powerSaveBlocker } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { requestCode, verifyLicence } = require('./lib/license')
@@ -13,7 +13,7 @@ const { createGate } = require('./lib/gate')
 const DEMO_DB = process.argv.includes('--demo') ? path.join(__dirname, 'tools', 'demo-data.sqlite') : path.join(__dirname, 'demo', 'demo-data.sqlite')
 const DEMO = fs.existsSync(DEMO_DB)
 // its own data folder, apart from a Meena Time / Apex-style copy on the same PC
-if (!process.argv.some((a) => a.startsWith('--user-data-dir'))) app.setPath('userData', path.join(app.getPath('appData'), DEMO ? 'Masar Time Demo' : 'Masar Time'))
+if (!process.argv.some((a) => a.startsWith('--user-data-dir'))) app.setPath('userData', path.join(app.getPath('appData'), DEMO ? 'Masar Time School Demo' : 'Masar Time School'))  // school edition: its own data folder (same as 1.0.x, so an update keeps the data)
 const dataDir = () => app.getPath('userData')
 // one database for all years (v1.0); `name` = 'main', a 4-digit year for a v0.x per-year file, or an
 // extra database made from «انشاء قاعدة بيانات» (Apex keeps several: «قاعدة البيانات الحالية/الجديدة»)
@@ -38,7 +38,7 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 640,
-    title: 'Masar Time',
+    title: 'Masar Time — المدارس',
     backgroundColor: '#edf1f2',
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
@@ -100,8 +100,11 @@ ipcMain.handle('db:save', (_e, year, bytes) => {
   fs.renameSync(tmp, dbPath(year)) // atomic replace: a crash never leaves a half-written DB
   return true
 })
+// school edition = full access (owner 2026-11-04): no licence code, no limits, no lock
+const FULL_ACCESS = process.env.MASAR_BASE_LICENCE !== '1' // =1 only for the base suite (tools/full-test.mjs tests the unregistered limits)
 ipcMain.handle('licence:status', () => {
   if (DEMO) return { requestCode: requestCode(), ok: true, edition: 'Demo' }
+  if (FULL_ACCESS) return { requestCode: requestCode(), ok: true, edition: 'School' }
   return guard.status()
 })
 ipcMain.handle('licence:register', async (_e, code) => {
@@ -295,6 +298,8 @@ app.whenReady().then(() => {
   dailyBackup()
   createWindow()
   gate = createGate({ dir: path.join(dataDir(), 'gate'), ipcMain, window: () => mainWin })
+  // the school PC must not sleep while it receives punches and sends messages
+  powerSaveBlocker.start('prevent-app-suspension')
 })
 let gate = null
 app.on('before-quit', () => { try { gate?.stop() } catch {} })

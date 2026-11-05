@@ -16,6 +16,7 @@ const MENUS = [
   { label: 'الإجراءات', items: [['قراءة الحركات (شبكة - ملف)', openReadPunches], ['عرض الحركات', openViewPunches], ['إضافة وتعديل الحركات لموظف', openEditPunches],
     ['الغاء الحركات المعدله يدويا', () => openDeletePunches(['manual'], 'إلغاء الحركات المعدله يدويا')], ['إضافة أجازات لموظف', openLeaves], ['إضافة أذونات لموظف', openPermissions],
     ['ترحيل الحركات', postPunches], ['الغاء ترحيل الحركات', openUnpost], ['الغاء جميع بيانات الموظف بالنظام', purgeEmployee]] },
+  { label: 'المدرسة', items: [['رسائل أولياء الأمور', openGuardianMessages]] },
   { label: 'التقارير', items: Object.keys(REPORTS).map((r) => [r, () => openReport(r)]) },
   { label: 'الاعدادات', items: [['بيانات المؤسسه', openCompany], ['اعدادات المستخدمين', [['صلاحيات المستخدمين', openRoles], ['إدارة المستخدمين', openUsers]]],
     ['اعدادات النظام', openSystemSettings], ['نسخة احتياطية', openGeneralSettings], ['سجل الحركات', openAuditLog]] },
@@ -24,7 +25,7 @@ const MENUS = [
 ]
 async function showAbout() {
   const p = await window.bridge.paths()
-  UI.message(`Masar Time Ver. ${VERSION}\nبرنامج الحضور والانصراف\n\nقاعدة البيانات: ${p.data}\nالنسخ الاحتياطية: ${p.backups}`)
+  UI.message(`Masar Time School Ver. ${VERSION}\nبرنامج الحضور والانصراف\n\nقاعدة البيانات: ${p.data}\nالنسخ الاحتياطية: ${p.backups}`)
 }
 
 const B = 'البيانات الأساسية/', A = 'الإجراءات/', S = 'الاعدادات/'
@@ -60,6 +61,10 @@ const RAIL = [
     ['الغاء بيانات موظف', `${A}الغاء جميع بيانات الموظف بالنظام`, () => purgeEmployee(), 'user-x'],
     { label: 'التقارير', icon: 'chart-column', children: REPORT_ORDER.map((r) => [r, `التقارير/${r}`, () => openReport(r)]) },
   ] },
+  { id: 'school', label: 'المدرسة', icon: 'school', items: [
+    ['رسائل أولياء الأمور', 'المدرسة/رسائل أولياء الأمور', () => openGuardianMessages(), 'message-circle'],
+    ['استقبال البصمات', `${B}تعريف الأجهزة`, () => openDevices(), 'fingerprint'],
+  ] },
   { id: 'users', label: 'المستخدمين', icon: 'user-cog', items: [
     ['المستخدمين', `${S}إدارة المستخدمين`, () => openUsers(), 'users'],
     ['الصلاحيات', `${S}صلاحيات المستخدمين`, () => openRoles(), 'shield-check'],
@@ -77,9 +82,9 @@ let licence = { ok: false }
 const Session = (window.Session = { userId: null, username: '', admin: false, perms: null })
 
 function setCaption() {
-  document.title = `Masar Time ${VERSION}${DB.year !== 'main' ? ` — ${DB.year}` : ''}`
+  document.title = `Masar Time School ${VERSION}${DB.year !== 'main' ? ` — ${DB.year}` : ''}`
   const v = document.getElementById('rail-version')
-  if (v) v.textContent = `Masar Time ${VERSION}`
+  if (v) v.textContent = `Masar Time School ${VERSION}`
 }
 
 // the sidebar leaves whatever is open and goes to one page (an «unsaved changes» answered with إلغاء stays)
@@ -241,16 +246,19 @@ const Gate = {
     this.running = true
     try {
       const bySerial = Object.fromEntries(DB.all("SELECT id, serial FROM devices WHERE IFNULL(serial, '') <> ''").map((d) => [d.serial.trim(), d.id]))
+      let created = 0
       for (;;) {
         const { rows, next } = await window.bridge.gateDrain(5000)
         if (!rows.length) { if (next) await window.bridge.gateAck(next); break }
         const bySn = {}
         for (const r of rows) (bySn[r.sn || ''] ||= []).push({ code: r.c, ts: r.t })
-        for (const [sn, list] of Object.entries(bySn)) await storePunches(list, 'device', bySerial[sn] ?? null)
+        for (const [sn, list] of Object.entries(bySn)) created += (await storePunches(list, 'device', bySerial[sn] ?? null)).created || 0
         await window.bridge.gateAck(next) // storePunches has saved them: only now may the journal forget
         if (rows.length < 5000) break
       }
-      if (document.querySelector('#home')?.style.display !== 'none') Dashboard.render()
+      if (created) await School.newStudents()
+      const home = document.querySelector('#home')
+      if (home && home.style.display !== 'none') Dashboard.render()
     } catch (e) { console.error('gate', e) } finally { this.running = false }
   },
 }
@@ -331,7 +339,7 @@ async function login() {
   const last = localStorage.getItem('mt-last-user') || 'أ'
   return UI.dialog({
     head: 'تسجيل الدخول', width: 440, cls: 'login-dlg',
-    foot: `Masar Time ${VERSION}`,
+    foot: `Masar Time School ${VERSION}`,
     // another database: remember the choice and restart on it (each database has its own users)
     onOpen: (d) => {
       d.root.querySelector('#year').addEventListener('change', async (e) => {
@@ -530,13 +538,15 @@ function openRestore() {
   licence = await window.bridge.licenceStatus()
   if (licence.locked) await lockScreen(licence)
   setCaption()
+  // live punches + guardian messages run from here on, even at the login screen
+  await School.start()
+  Gate.init()
   await login()
   document.getElementById('shell').hidden = false
   buildTopbar(buildRail())
   renderHome()
   WebSync.init()
   AutoRead.restart()
-  Gate.init()
   // a trial that ends while the program is open locks it too
   setInterval(async () => {
     const st = await window.bridge.licenceStatus()
