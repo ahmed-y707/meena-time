@@ -51,7 +51,7 @@ await p.waitForSelector('.login-page #pass', { timeout: 20000 })
 await p.locator('#user').fill('Admin'); await p.locator('#pass').fill(''); await p.locator('.dlg .btns button.pri').first().click(); await p.waitForTimeout(500)
 await p.locator('#np1').fill('start1'); await p.locator('#np2').fill('start1'); await dlgBtn(p, 'حفظ'); await p.waitForTimeout(500)
 check('full program: no offer while unregistered (a trial would cap the employees)', !(await p.locator('.dlg-backdrop').count()))
-await p.evaluate(() => openRegister()); await p.waitForTimeout(300)
+await p.evaluate(() => { openRegister() }); await p.waitForTimeout(300)
 await p.locator('#lic').fill(process.env.MT_GOLD_LICENCE); await p.locator('.dlg').getByRole('button', { name: 'تسجيل' }).click(); await p.waitForTimeout(400)
 check('full program: registered', /تم تسجيل البرنامج/.test(await dlgText(p))); await dlgBtn(p, 'موافق')
 const offer = await dlgText(p)
@@ -67,7 +67,7 @@ check('8 employees and 49 punches in the full program', db.emps === 8 && db.punc
 check('the name typed in the USB edition came over', db.name === 'TEST-موظف من الفلاشة', db.name)
 
 // 4. «سحب من الفلاشة» in «قراءة الحركات»
-await p.evaluate(() => openReadPunches()); await p.waitForTimeout(400)
+await p.evaluate(() => { openReadPunches() }); await p.waitForTimeout(400)
 await p.locator('#rp-from').fill('2026-10-01'); await p.locator('#rp-to').fill('2026-10-31')
 await p.locator('#rp-flash').click(); await p.waitForTimeout(800)
 const rd = await p.locator('#rp-msg').textContent()
@@ -76,7 +76,7 @@ check('the file found is listed', (await p.locator('#rp-flist').textContent()).i
 await snap(p, 'read-from-flash')
 
 // 5. the «الدخول والخروج» report
-await p.evaluate(() => openReport('الدخول والخروج')); await p.waitForTimeout(400)
+await p.evaluate(() => { openReport('الدخول والخروج') }); await p.waitForTimeout(400)
 const rw = p.locator('.win[data-win="rep-الدخول والخروج"]')
 await rw.locator('#r-from').fill('2026-10-01'); await rw.locator('#r-to').fill('2026-10-31')
 await rw.locator('.toolbar button', { hasText: 'موافق' }).first().click(); await p.waitForTimeout(600)
