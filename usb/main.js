@@ -9,7 +9,7 @@ const { deviceCode, verifyKey, dataKey, clean } = require('./licence')
 const { createStore } = require('./store')
 const BRAND = require('./brand.json')
 
-app.setPath('userData', path.join(app.getPath('appData'), 'Masar Time USB'))
+if (!process.argv.some((a) => a.startsWith('--user-data-dir'))) app.setPath('userData', path.join(app.getPath('appData'), 'Masar Time USB'))
 // the installed program refuses to start under a debugger (the fuses already block --inspect / NODE_OPTIONS)
 if (app.isPackaged && process.argv.some((a) => /^--(remote-debugging|inspect|js-flags)/i.test(a))) app.exit(1)
 const dataDir = () => app.getPath('userData')
