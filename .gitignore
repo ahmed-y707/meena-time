@@ -10,3 +10,5 @@ demo/
 feature-shots/
 renderer/masar.css
 renderer/lucide.js
+build-usb/
+dist-usb/
