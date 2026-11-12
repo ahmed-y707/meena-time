@@ -17,7 +17,7 @@
 //    N minutes late / early, first-in-last-out. Defaults reproduce the old behaviour.
 const Engine = {
   SETTINGS_DEFAULT: {
-    ignore_min: 0, report_shifts: 4, ot_before_min: 0, ot_after_min: 0,
+    ignore_min: 10, report_shifts: 2, ot_before_min: 0, ot_after_min: 0, // ignore / shifts: the site's defaults
     absent_late_on: 0, absent_late_min: 0, absent_early_on: 0, absent_early_min: 0, first_last: 0,
     colors: { holiday: '#b2f0f0', permission: '#ff7fbf', leave: '#90ee90', late: '#ffff00', weekly: '#ffa500', absent: '#ff0000', early: '#0000ff', present: '#ffffff' },
     auto_read: 0, auto_device: '', auto_times: [],
@@ -128,11 +128,13 @@ const Engine = {
     const defaultList = DB.one("SELECT value FROM meta WHERE key = 'web_default_holiday_list'")?.value || ''
     const weekly = new Set(DB.all('SELECT list_id, date FROM web_weekly_offs WHERE date BETWEEN ? AND ?', [from, to]).map((w) => `${w.list_id}|${w.date}`))
     const holidayFor = (list, d) => holidays.find((h) => h.from_date <= d && h.to_date >= d && (!h.list_id || h.list_id === list))
+    const firstGroup = Object.keys(cfg.groups).map(Number).sort((a, b) => a - b)[0] ?? null
     const rows = []
     for (const e of emps) {
       const hList = e.holiday_list || defaultList
       const hist = shiftHist[e.id] || []
-      const groupAt = (date) => { let g = null; for (const s of hist) if (s.from_date <= date) g = s.group_id; return g ?? (hist.length ? null : e.shift_group_id) }
+      // an employee with no shift that day falls back to the system's first shift, as on the site
+      const groupAt = (date) => { let g = null; for (const s of hist) if (s.from_date <= date) g = s.group_id; return g ?? (hist.length ? null : e.shift_group_id) ?? firstGroup }
       // punches indexed by date → minutes; a day sees its own punches plus the next
       // day's shifted by +24h (for a «شفت ممتد» / open shift running past midnight)
       const byDate = {}
@@ -200,10 +202,24 @@ const Engine = {
     const early = last != null ? Math.max(0, end - (w.early_min || 0) - last - covered(last, end)) : 0
     const r = { ...base, scheduled: end - start, in: first, out: last, late, early, ot: last != null ? Math.max(0, last - end) : 0, worked: first != null && last > first ? last - first : 0, missingOut: ps.length === 1,
       windows: [{ in: first, out: last, late, early }] }
-    if (first == null) return { ...r, kind: date >= today ? 'waiting' : 'absent', status: date >= today ? 'في الانتظار' : 'غياب' }
+    const fullDay = spans.some(([a, b]) => a <= start && b >= end)
+    if (first == null) return fullDay ? { ...r, kind: 'leave', status: 'اذن يوم كامل', permission: 'يوم كامل' }
+      : { ...r, kind: date >= today ? 'waiting' : 'absent', status: date >= today ? 'في الانتظار' : 'غياب' }
+    if (fullDay) return { ...r, late: 0, early: 0, permission: 'يوم كامل', kind: 'present', status: 'حضور' }
     return { ...r, kind: 'present', status: late ? 'حضور متأخر' : 'حضور' }
   },
 
+  // The website's rule (base_meena shift_rules.evaluate_day + hr_reports._excuse), period by period:
+  //  • in = earliest punch inside [بداية الحضور, نهاية الحضور], out = latest inside [بداية الانصراف,
+  //    نهاية الانصراف]; a punch taken by one period is not reused by the next.
+  //  • a period with an in OR an out is attended; the day is attended when any period is.
+  //  • تأخير: past the grace → counted from the official time; انصراف مبكر the same way.
+  //  • on an attended day, a period that closed with no in or no out counts its whole length as
+  //    تأخير and earns no overtime (Apex).
+  //  • no punch inside any period: «في الانتظار» while a check-in window is still open today,
+  //    else «غياب» — punches outside every window don't make the day attended (same as the site).
+  //  • an approved إذن takes the minutes it covers off the lateness / early leave; a إذن covering the
+  //    whole working day («يوم كامل») turns an absence into «اذن يوم كامل».
   evalWindows(base, windows, pool, e, date, today, perms, S = this.SETTINGS_DEFAULT) {
     // «احتساب اول حركة دخول واخر حركة انصراف»: the day's periods act as one — the first
     // punch is the in, the last the out, late/early against the first start / last end
@@ -220,54 +236,59 @@ const Engine = {
       return m
     }
     const scheduled = windows.reduce((s, w) => s + Math.max(0, w.check_out - w.check_in), 0)
-    const permRanges = perms.map((p) => [this.toMin(p.from_time), this.toMin(p.to_time)])
-    const covered = (a, b) => permRanges.some(([pf, pt]) => pf <= a % 1440 && pt >= b % 1440)
+    const dayStart = windows[0].check_in, dayEnd = windows.at(-1).check_out
+    // permission spans in the day's minutes (a span ending before it starts runs past midnight)
+    const spans = perms.map((p) => {
+      let a = this.toMin(p.from_time), b = this.toMin(p.to_time)
+      if (a < dayStart - 720) a += 1440
+      if (b <= a) b += 1440
+      return [a, b]
+    })
+    const overlap = (lo, hi) => (hi > lo ? spans.reduce((s, [a, b]) => s + Math.max(0, Math.min(hi, b) - Math.max(lo, a)), 0) : 0)
+    const fullDay = spans.some(([a, b]) => a <= dayStart && b >= dayEnd)
     const r = { ...base, windows: [], scheduled }
     // minutes into «today» (a later date: nothing has passed yet; an earlier one: everything)
     const nowMin = date < today ? Infinity : date > today ? -Infinity : new Date().getHours() * 60 + new Date().getMinutes()
-    let anyIn = false, anyWaiting = false
+    let anyPresent = false, anyWaiting = false
     for (const w of windows) {
       const wi = take(w.start_in, w.end_in, false)
       const wo = take(w.start_out, w.end_out, true)
       const x = { in: wi, out: wo, late: 0, early: 0, ot: 0, check_in: w.check_in, check_out: w.check_out, end_out: w.end_out }
-      if (wi == null) {
-        // still inside the check-in window → في الانتظار; once it has passed with no punch → غياب (as Apex)
-        if (nowMin <= w.end_in) anyWaiting = true
-      } else {
-        anyIn = true
-        if (wi > w.check_in + (w.late_min || 0) && !covered(w.check_in, wi)) x.late = wi - w.check_in
-        if (wo != null && wo < w.check_out - (w.early_min || 0) && !covered(wo, w.check_out)) x.early = w.check_out - wo
-        if (wo == null && !e.no_punch_out && date < today) r.missingOut = true
-        if (wo != null) r.worked += Math.max(0, wo - wi)
-        // this period's own overtime (arrived before / left after it), for the per-shift report
-        x.ot = (e.ot_before ? Math.max(0, w.check_in - wi) : 0) + (e.ot_after && wo != null ? Math.max(0, wo - w.check_out) : 0)
-      }
+      if (wi != null || wo != null) anyPresent = true
+      else if (nowMin < w.end_in) anyWaiting = true
+      if (wi != null && wi > w.check_in + (w.late_min || 0)) x.late = wi - w.check_in
+      if (wo != null && wo < w.check_out - (w.early_min || 0)) x.early = w.check_out - wo
+      if (wi != null && wo != null) r.worked += Math.max(0, wo - wi)
+      if (wi != null && wo == null && !e.no_punch_out && nowMin > w.end_out) r.missingOut = true
+      // this period's own overtime (arrived before / stayed after it), for the per-shift report
+      x.ot = (e.ot_before && wi != null ? Math.max(0, w.check_in - wi) : 0) + (e.ot_after && wo != null ? Math.max(0, wo - w.check_out) : 0)
       r.windows.push(x)
     }
-    // Apex: on a day with a check-in, a period that closed (its «نهاية الانصراف» passed) missing its
-    // check-in or check-out was not worked — its whole duration counts as تأخير
-    if (anyIn) for (const x of r.windows) {
-      if ((x.in == null || x.out == null) && nowMin > x.end_out && !covered(x.check_in, x.check_out)) {
-        x.late = Math.max(0, x.check_out - x.check_in); x.early = 0; x.incomplete = true
-      }
+    if (anyPresent) for (const x of r.windows) {
+      if ((x.in == null || x.out == null) && nowMin > x.end_out) { x.late = Math.max(0, x.check_out - x.check_in); x.early = 0; x.ot = 0; x.incomplete = true }
     }
-    const first = r.windows.find((x) => x.in != null)
-    const lastOut = [...r.windows].reverse().find((x) => x.out != null)
-    r.in = first?.in ?? null
-    r.out = lastOut?.out ?? null
+    const ins = r.windows.filter((x) => x.in != null).map((x) => x.in)
+    const outs = r.windows.filter((x) => x.out != null).map((x) => x.out)
+    r.in = ins.length ? Math.min(...ins) : null
+    r.out = outs.length ? Math.max(...outs) : null
     r.late = r.windows.reduce((s, x) => s + x.late, 0)
     r.early = r.windows.reduce((s, x) => s + x.early, 0)
-    // a working day with any punch at all is attended («مداوم»), even when no punch fell in a period's window
-    if (!anyIn && base.punches.length) return { ...r, in: base.punches[0], out: base.punches.length > 1 ? base.punches.at(-1) : null, kind: 'present', status: 'حضور' }
-    if (!anyIn) return { ...r, kind: anyWaiting ? 'waiting' : 'absent', status: anyWaiting ? 'في الانتظار' : 'غياب' }
-    const w0 = windows[0], wl = windows.at(-1)
+    if (!anyPresent) {
+      if (fullDay) return { ...r, kind: 'leave', status: 'اذن يوم كامل', permission: 'يوم كامل' }
+      return { ...r, kind: anyWaiting ? 'waiting' : 'absent', status: anyWaiting ? 'في الانتظار' : 'غياب' }
+    }
+    if (fullDay) { r.late = r.early = 0; r.permission = 'يوم كامل' }
+    else if (spans.length) {
+      if (r.late && r.in != null) r.late = Math.max(0, r.late - overlap(dayStart, r.in))
+      if (r.early && r.out != null) r.early = Math.max(0, r.early - overlap(r.out, dayEnd))
+    }
     // «يحتسب الاضافي قبل/بعد الدوام N بالدقائق»: shorter early arrival / late stay → no overtime
-    let before = e.ot_before && r.in != null ? Math.max(0, w0.check_in - r.in) : 0
-    let after = e.ot_after && r.out != null ? Math.max(0, r.out - wl.check_out) : 0
+    let before = r.windows.reduce((s, x) => s + (e.ot_before && x.in != null && !x.incomplete ? Math.max(0, x.check_in - x.in) : 0), 0)
+    let after = r.windows.reduce((s, x) => s + (e.ot_after && x.out != null && !x.incomplete ? Math.max(0, x.out - x.check_out) : 0), 0)
     if (before < (+S.ot_before_min || 0)) before = 0
     if (after < (+S.ot_after_min || 0)) after = 0
     r.ot = Math.max(0, before + after - (e.ot_deduct_late ? r.late : 0))
-    r.in = r.in % 1440
+    r.in = r.in != null ? r.in % 1440 : null
     if (r.out != null) r.out = r.out % 1440
     return { ...r, kind: 'present', status: r.late ? 'حضور متأخر' : 'حضور' }
   },
@@ -275,7 +296,7 @@ const Engine = {
   evalOpen(base, o, pool, e, date, today, S = this.SETTINGS_DEFAULT) {
     base = { ...base, scheduled: o.required_min || 0 }
     const end = o.extends_next_day ? 1440 + (this.toMin(o.day_end) || 0) : 1440
-    const ps = pool.filter((m) => m >= 0 && m < end).sort((a, b) => a - b)
+    const ps = pool.filter((m) => m >= 0 && m < end).sort((a, b) => a - b).filter((m, i, a) => i === 0 || m - a[i - 1] >= 1) // a repeat within a minute is the same punch (site)
     if (!ps.length) return { ...base, kind: date >= today ? 'waiting' : 'absent', status: date >= today ? 'في الانتظار' : 'غياب' }
     // punches pair up in order: 1st/2nd = first period, 3rd/4th = second, … (a later
     // punch never moves an earlier check-out); repeats are already dropped by «وقت إهمال الحركات»
