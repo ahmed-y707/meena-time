@@ -6,6 +6,7 @@ const fs = require('fs')
 const { requestCode, verifyLicence } = require('./lib/license')
 const { createGuard } = require('./lib/guard')
 const { createGate } = require('./lib/gate')
+const { readUsbEdition } = require('./lib/usb-import')
 
 // Demo: own data folder, starts with the test data, all features unlocked.
 // Installer: demo/demo-data.sqlite is bundled by tools/build-demo.sh (normal
@@ -129,6 +130,39 @@ ipcMain.handle('licence:register', async (_e, code) => {
   const st = guard.status()
   if (st.locked && prev !== null) fs.writeFileSync(licencePath(), prev) // an already-ended trial code doesn't replace a working one
   return st
+})
+
+// «سحب من الفلاشة»: the device's USB export (…_attlog.dat) on any removable drive — as in Masar Time USB
+const ATTLOG = /attlog.*\.dat$/i
+function flashRoots() {
+  if (!app.isPackaged && process.env.MT_USB_ROOTS) return process.env.MT_USB_ROOTS.split(':') // tests only: a folder that plays the flash drive
+  if (process.platform === 'win32') {
+    const sys = (process.env.SystemDrive || 'C:').toUpperCase()
+    return 'DEFGHIJKLMNOPQRSTUVWXYZ'.split('').map((l) => `${l}:\\`).filter((r) => r.slice(0, 2) !== sys && fs.existsSync(r))
+  }
+  const out = []
+  for (const base of [`/run/media/${process.env.USER || ''}`, '/media', `/media/${process.env.USER || ''}`, '/mnt']) { try { for (const d of fs.readdirSync(base)) out.push(path.join(base, d)) } catch {} }
+  return out
+}
+// upgrade from Masar Time USB on this PC (MT_USB_DATA_DIR: tests only)
+ipcMain.handle('usb-edition:read', () => readUsbEdition((!app.isPackaged && process.env.MT_USB_DATA_DIR) || path.join(app.getPath('appData'), 'Masar Time USB')))
+ipcMain.handle('flash:scan', () => {
+  const found = []
+  const look = (dir, depth) => {
+    let items = []
+    try { items = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
+    for (const it of items) {
+      const p = path.join(dir, it.name)
+      if (it.isFile() && ATTLOG.test(it.name)) found.push({ path: p, name: it.name })
+      else if (it.isDirectory() && depth < 2 && !/^(\$|System Volume Information)/i.test(it.name)) look(p, depth + 1)
+    }
+  }
+  for (const r of flashRoots()) look(r, 0)
+  return found
+})
+ipcMain.handle('flash:read', (_e, p) => {
+  if (!ATTLOG.test(path.basename(String(p))) || fs.statSync(p).size > 50 * 1024 * 1024) return null // only punch files found by flash:scan
+  return fs.readFileSync(p, 'utf8')
 })
 
 // «قراءة الحركات» from a ZKTeco device on the LAN (TCP 4370, UDP fallback inside node-zklib).

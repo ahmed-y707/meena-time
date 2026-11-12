@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('bridge', {
   register: (code) => ipcRenderer.invoke('licence:register', code),
   readDevice: (dev) => ipcRenderer.invoke('device:read', dev),
   pingDevice: (dev) => ipcRenderer.invoke('device:ping', dev),
+  flashScan: () => ipcRenderer.invoke('flash:scan'),
+  usbEdition: () => ipcRenderer.invoke('usb-edition:read'),
+  flashRead: (p) => ipcRenderer.invoke('flash:read', p),
   deviceClock: (dev) => ipcRenderer.invoke('device:clock', dev),
   // live punches pushed by devices on the network (ADMS)
   gateDrain: (max) => ipcRenderer.invoke('gate:drain', max),

@@ -79,6 +79,7 @@ function openReadPunches() {
           <div class="file-box"><div class="fbtns"><label class="fadd" title="اضافة ملف">${ICONS.new || '+'}<input type="file" id="rp-file" accept=".txt,.dat,.csv,.log" multiple hidden></label><button id="rp-frem" title="حذف الملف المحدد">${ICONS.del || '×'}</button></div>
             <div class="grid-wrap"><table class="grid"><thead><tr><th>المسار</th></tr></thead><tbody id="rp-flist"></tbody></table></div></div>
           <button id="rp-read-file">${ICONS.save || ''}<span>قراءة ملف الحركات</span></button>
+          ${window.bridge.flashScan ? `<button id="rp-flash">${ICONS.save || ''}<span>سحب من الفلاشة</span></button>` : ''}
         </fieldset>
       </div>
       <fieldset class="count"><label>عدد الحركات</label><input type="text" id="rp-count" readonly><span id="rp-msg"></span></fieldset>
@@ -119,6 +120,14 @@ function openReadPunches() {
     $('#rp-file').addEventListener('change', (e) => { files = [...files, ...e.target.files]; e.target.value = ''; drawFiles() })
     $('#rp-flist').addEventListener('mousedown', (e) => { const tr = e.target.closest('tr'); if (!tr) return; $('#rp-flist').querySelectorAll('tr').forEach((x) => x.classList.toggle('current', x === tr)) })
     $('#rp-frem').onclick = () => { const tr = $('#rp-flist tr.current'); if (!tr) return UI.message('حدد ملفاً من القائمة'); files.splice(+tr.dataset.i, 1); drawFiles() }
+    // «سحب من الفلاشة»: find the device's attlog.dat on the flash drive(s) and read them in one go
+    if ($('#rp-flash')) $('#rp-flash').onclick = async () => {
+      const found = await window.bridge.flashScan()
+      if (!found.length) return UI.message('لم يتم العثور على ملف حركات في الفلاشة — صدّر الحركات من جهاز البصمة إلى الفلاشة (ملف ينتهي بـ attlog.dat) ثم ركّبها في الكمبيوتر')
+      for (const f of found) if (!files.some((x) => x.path === f.path)) files.push({ name: f.path, path: f.path, text: async () => (await window.bridge.flashRead(f.path)) || '' })
+      drawFiles()
+      $('#rp-read-file').click()
+    }
     $('#rp-read-file').onclick = async () => {
       const per = period(); if (!per) return
       if (!files.length) return UI.message('اختر ملف الحركات')

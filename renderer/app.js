@@ -6,6 +6,7 @@ const TRIAL_REPORTS = [
   'الحضور والانصراف إجمالي',
   'حالة اليوم',
   'الحضور والانصراف بالحركات',
+  'الدخول والخروج', // the free USB edition's one report: open in every edition
 ]
 
 // Permission keys ("<menu>/<item>") are kept as they were, so saved roles still apply.
@@ -30,7 +31,7 @@ async function showAbout() {
 const B = 'البيانات الأساسية/', A = 'الإجراءات/', S = 'الاعدادات/'
 // reports in lib/hr-reports.ts's order; those the site has no page for come last
 const REPORT_ORDER = ['حالة اليوم', 'الحضور والانصراف تفصيلي', 'الحضور والانصراف إجمالي', 'أجازات الموظفين', 'التأخير عن بداية الدوام اليومي', 'الغياب خلال فترة',
-  'التأخير عن الدوام خلال فترة', 'الموظفون', 'تأخير وإضافي الدوام', 'الحركات الغير مكتملة', 'أذونات الموظفين', 'بيان تأخير الموظفين', 'الحضور والانصراف بالحركات', 'مواعيد العمل']
+  'التأخير عن الدوام خلال فترة', 'الموظفون', 'تأخير وإضافي الدوام', 'الحركات الغير مكتملة', 'أذونات الموظفين', 'بيان تأخير الموظفين', 'الحضور والانصراف بالحركات', 'الدخول والخروج', 'مواعيد العمل']
 // [label, permission key, open, icon]
 const RAIL = [
   { id: 'dashboard', label: 'لوحة القيادة', icon: 'layout-dashboard' },
@@ -255,6 +256,31 @@ const Gate = {
   },
 }
 
+// Upgrade from Masar Time USB on this PC: offer once to bring its employees (with their names) and punches over
+async function offerUsbUpgrade() {
+  if (!window.bridge.usbEdition || !Session.admin || !licence.ok || licence.trial) return
+  if (DB.one("SELECT value FROM meta WHERE key = 'usb_upgrade'")) return
+  const data = await window.bridge.usbEdition()
+  if (!data) return
+  const pins = Object.keys(data.employees)
+  const list = pins.flatMap((pin) => (data.punches[pin] || []).map((ts) => ({ code: pin, ts })))
+  if (!pins.length) return
+  const go = await UI.confirm(`وجدنا على هذا الجهاز بيانات «مسار تايم — نسخة الفلاشة»: ${pins.length} موظف و${list.length} حركة. نقلها إلى البرنامج الآن؟`)
+  DB.run("INSERT INTO meta (key, value) VALUES ('usb_upgrade', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", [go ? 'done' : 'declined'])
+  if (!go) return DB.flush()
+  const r = await storePunches(list, 'file')
+  // names typed in the USB edition replace «موظف جديد»; employees with no punches come over too
+  for (const pin of pins) {
+    const name = (data.employees[pin]?.name || '').trim()
+    if (!DB.one('SELECT 1 FROM employees WHERE code = ?', [pin])) DB.run("INSERT INTO employees (code, name_ar, name_en, status) VALUES (?, ?, 'New Employee', 'نشط')", [pin, name || 'موظف جديد'])
+    else if (name) DB.run("UPDATE employees SET name_ar = ? WHERE code = ? AND name_ar = 'موظف جديد'", [name, pin])
+  }
+  DB.audit('نقل بيانات نسخة الفلاشة', `${pins.length} موظف`, r.text)
+  await DB.flush()
+  renderHome()
+  UI.message(`تم نقل بيانات نسخة الفلاشة: ${r.text}`)
+}
+
 async function openRegister() {
   const st = await window.bridge.licenceStatus()
   await UI.dialog({
@@ -279,7 +305,8 @@ async function openRegister() {
         setCaption()
         renderHome()
         d.close(true)
-        UI.message('تم تسجيل البرنامج بنجاح')
+        await UI.message('تم تسجيل البرنامج بنجاح')
+        await offerUsbUpgrade()
       } },
       { label: 'إغلاق', icon: 'cancel', onClick: (d) => d.close(false) },
     ],
@@ -537,6 +564,7 @@ function openRestore() {
   WebSync.init()
   AutoRead.restart()
   Gate.init()
+  if (licence.ok) await offerUsbUpgrade()
   // a trial that ends while the program is open locks it too
   setInterval(async () => {
     const st = await window.bridge.licenceStatus()

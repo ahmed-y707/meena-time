@@ -14,7 +14,7 @@ fs.rmSync(UD, { recursive: true, force: true })
 let pass = 0, fail = 0
 const check = (name, ok, info = '') => { ok ? pass++ : fail++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : '  → ' + info}`) }
 
-const app = await electron.launch({ executablePath: process.env.MT_ELECTRON || `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT })
+const app = await electron.launch({ executablePath: process.env.MT_ELECTRON || `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT, env: { ...process.env, MT_USB_DATA_DIR: '/tmp/TEST-no-usb-edition' } })
 const p = await app.firstWindow()
 await p.setViewportSize({ width: 1366, height: 768 })
 const errs = []
@@ -922,7 +922,7 @@ check('logout: login again', await p.locator('#home').isVisible())
 
 // ── 9. restart: data persisted, password changed, licence kept ──
 await app.close()
-const app2 = await electron.launch({ executablePath: process.env.MT_ELECTRON || `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT })
+const app2 = await electron.launch({ executablePath: process.env.MT_ELECTRON || `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT, env: { ...process.env, MT_USB_DATA_DIR: '/tmp/TEST-no-usb-edition' } })
 const p2 = await app2.firstWindow(); await p2.waitForSelector('.login-page #pass')
 await loginBtn(p2).click(); await p2.waitForTimeout(300)
 check('restart: old empty password no longer works', /غير صحيحة/.test(await p2.locator('.dlg .err').textContent()))
@@ -936,7 +936,7 @@ await openPage(p2, 'الموظفين')
 await p2.evaluate(() => { Nav.go('البيانات الاساسية', ['أوقات العمل', 'البيانات الأساسية/مواعيد العمل', () => openShiftGroups()]) }); await p2.waitForTimeout(200)
 check('permissions: a screen without permission is refused', /ليس لديك صلاحية/.test(await p2.locator('.dlg-backdrop .body').last().textContent()))
 await app2.close()
-const app3 = await electron.launch({ executablePath: process.env.MT_ELECTRON || `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT })
+const app3 = await electron.launch({ executablePath: process.env.MT_ELECTRON || `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT, env: { ...process.env, MT_USB_DATA_DIR: '/tmp/TEST-no-usb-edition' } })
 const p3 = await app3.firstWindow(); await p3.waitForSelector('.login-page #pass')
 check('login remembers the last user', (await p3.locator('#user').inputValue()) === 'hr')
 await p3.locator('#user').fill('أ'); await p3.locator('#pass').fill('admin1'); await loginBtn(p3).click(); await p3.waitForTimeout(700)
@@ -949,7 +949,7 @@ check('restart: the receiving port is kept', JSON.parse(fs.readFileSync(`${UD}/g
 await p3.locator('.win tbody').first().waitFor()
 await app3.close()
 { const cfg = `${UD}/gate/gate.json`; fs.writeFileSync(cfg, JSON.stringify({ ...JSON.parse(fs.readFileSync(cfg, 'utf8')), ip: '10.254.254.254' })) }
-const app4 = await electron.launch({ executablePath: process.env.MT_ELECTRON || `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT })
+const app4 = await electron.launch({ executablePath: process.env.MT_ELECTRON || `${ROOT}/node_modules/electron/dist/electron`, args: ['.', '--no-sandbox', `--user-data-dir=${UD}`], cwd: ROOT, env: { ...process.env, MT_USB_DATA_DIR: '/tmp/TEST-no-usb-edition' } })
 const p4 = await app4.firstWindow(); await p4.waitForSelector('.login-page #pass')
 await p4.locator('#user').fill('أ'); await p4.locator('#pass').fill('admin1'); await loginBtn(p4).click(); await p4.waitForTimeout(700)
 await openPage(p4, 'الاجهزة'); await p4.waitForTimeout(500)

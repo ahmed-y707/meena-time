@@ -201,6 +201,13 @@ const REPORTS = {
     html: `<div class="rep-sub">${period(f)}</div>` + table(['كود الموظف', 'إسم الموظف', 'التاريخ', 'اليوم', 'الحركات', 'حالة اليوم'],
       Engine.compute(f).filter((r) => r.punches.length || r.kind === 'absent').map((r) => [r.emp.code, r.emp.name_ar, r.date, DAY_NAMES[r.day], r.punches.map(H).join('  ·  '), dayStatus(r)])),
   }) },
+  // the USB edition's report, here too: when each employee came in (first punch of the day) and went out
+  // (last punch; a single punch has no خروج) — repeats are already dropped by «وقت إهمال الحركات»
+  'الدخول والخروج': { build: (f) => ({
+    html: `<div class="rep-sub">${period(f)}</div>` + table(['كود الموظف', 'إسم الموظف', 'التاريخ', 'اليوم', 'الدخول', 'الخروج'],
+      Engine.compute(f).filter((r) => r.punches.length).map((r) => [r.emp.code, r.emp.name_ar, r.date, DAY_NAMES[r.day], H(r.punches[0]),
+        r.punches.length > 1 ? H(r.punches.at(-1)) : 'لا يوجد'])),
+  }) },
   // Apex «تقرير أذونات الموظفين» (PermReportA): per employee, one row per permission —
   // اليوم · التاريخ · الإذن (البدايه / النهايه) · الدوام · الإذن · التأخير · الإضافي · ساعات العمل · حالة اليوم
   'أذونات الموظفين': { build: (f) => {
