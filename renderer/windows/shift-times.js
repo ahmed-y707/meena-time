@@ -25,20 +25,28 @@ const NOTE = 'في حاله التعديل علي دوام . وهذا الدوا
 function openShiftTimes(group, onSaved) {
   const g = DB.one('SELECT * FROM shift_groups WHERE id = ?', [group.id])
   const open = !!g.open_shift
-  UI.openWindow(`shift-times-${g.id}`, 'إعداد مواعيد العمل', { width: 1060, height: open ? 360 : 440 }, (body, win) => {
+  UI.openWindow(`shift-times-${g.id}`, 'إعداد مواعيد العمل', { width: 1060, height: open ? 420 : 520 }, (body, win) => {
     // one entry per weekday: { off, periods: [{ b, e, si, ei, so, eo, late, early }] × 4 } or, open shift, { off, hours }
-    const days = DAYS.map((_, d) => {
-      const rows = DB.all("SELECT * FROM shift_windows WHERE group_id = ? AND calendar = 'Y' AND slot = ? ORDER BY window_no", [g.id, d])
+    // «أوقات رمضان» (calendar R): the same week with its own times, used inside a Ramadan period
+    const load = (cal) => DAYS.map((_, d) => {
+      const rows = DB.all('SELECT * FROM shift_windows WHERE group_id = ? AND calendar = ? AND slot = ? ORDER BY window_no', [g.id, cal, d])
       const off = rows.length ? !!rows[0].is_off : d === 6
       if (open) return { off, hours: rows[0]?.required_min != null ? Engine.hm(rows[0].required_min) : '' }
       const live = rows.filter((r) => !r.is_off)
       return { off, periods: [0, 1, 2, 3].map((i) => { const r = live.find((x) => x.window_no === i + 1); return Object.fromEntries(COLS.map(([k, col]) => [k, r?.[col] != null ? String(r[col]) : k === 'late' || k === 'early' ? '0' : ''])) }) }
     })
+    const C = { Y: { days: load('Y') }, R: { days: load('R') } }
+    let useR = !!DB.one("SELECT 1 FROM shift_windows WHERE group_id = ? AND calendar = 'R' LIMIT 1", [g.id])
+    if (!useR) C.R.days = JSON.parse(JSON.stringify(C.Y.days)) // a starting point: the normal times
+    for (const k of ['Y', 'R']) { C[k].bad = DAYS.map(() => new Set()); C[k].autos = DAYS.map(() => new Set()) }
+    let cal = 'Y'
     let cur = 0
-    const bad = DAYS.map(() => new Set()) // the ✖ fields of each day, as "period:field"
+    let days = C.Y.days
+    let bad = C.Y.bad // the ✖ fields of each day, as "period:field"
     // punch windows the program filled in (not typed): they follow the period if its times change,
     // so a later edit can't leave them pointing at the old times
-    const autos = DAYS.map(() => new Set())
+    let autos = C.Y.autos
+    const useCal = (k) => { cal = k; days = C[k].days; bad = C[k].bad; autos = C[k].autos }
     const AUTO_KEYS = ['si', 'ei', 'so', 'eo'], COL_OF = { si: 'start_in', ei: 'end_in', so: 'start_out', eo: 'end_out' }
     function findAutos(i) {
       autos[i] = new Set()
@@ -48,10 +56,11 @@ function openShiftTimes(group, onSaved) {
       for (const w of rows) for (const k of AUTO_KEYS) if (w.check_in && w.check_out && days[i].periods[w.window_no - 1][k] === w[COL_OF[k]]) autos[i].add(`${w.window_no - 1}:${k}`)
     }
     // what is on disk — closing with anything else asks first (times used to vanish when the window was closed before «حفظ»)
-    let saved = JSON.stringify(days)
+    const snapshot = () => JSON.stringify({ Y: C.Y.days, R: useR ? C.R.days : null })
+    let saved = snapshot()
     win.onClose(async () => {
       read()
-      if (JSON.stringify(days) === saved) return true
+      if (snapshot() === saved) return true
       UI.focus(`shift-times-${g.id}`)
       const ans = await UI.dialog({ head: 'تأكيد', msg: true, width: 420,
         bodyHtml: '<div class="msg-icon q">?</div><div class="msg-text">لم يتم حفظ مواعيد العمل. هل تريد حفظ التغييرات قبل الإغلاق؟</div>',
@@ -76,11 +85,36 @@ function openShiftTimes(group, onSaved) {
     ])
     const view = UI.el(`<div class="st-apex">
       <div class="st-group">مواعيد عمل المجموعة '${UI.esc(g.name_ar)}'</div>
+      <div class="st-cal"><button type="button" data-c="Y">الأوقات العادية</button><button type="button" data-c="R">أوقات رمضان</button></div>
+      <div class="st-ram" hidden><label class="off"><input type="checkbox" id="st-user"> لهذا الدوام أوقات خاصة في رمضان</label>
+        <div class="st-ramp"><b>فترات رمضان</b> <span class="hint">(لكل الدوامات)</span> <span id="st-rlist"></span>
+          <span class="add">من <input type="date" id="st-rfrom"> إلى <input type="date" id="st-rto"> <button type="button" id="st-radd" class="mini">إضافة</button></span></div></div>
       <div class="st-tabs">${DAYS.map((d, i) => `<button type="button" data-d="${i}">${d}</button>`).join('')}</div>
       <div class="st-day"><div class="band">إعدادات الدوام</div><div class="st-body"></div></div></div>`)
     body.append(bar, view)
     const $ = (q) => view.querySelector(q)
     view.querySelectorAll('.st-tabs button').forEach((b) => (b.onclick = () => { read(); cur = +b.dataset.d; draw() }))
+    view.querySelectorAll('.st-cal button').forEach((b) => (b.onclick = () => { read(); useCal(b.dataset.c); draw() }))
+    $('#st-user').onchange = () => { read(); useR = $('#st-user').checked; draw() }
+    const ymd = (s) => (s || '').split('-').reverse().join('/')
+    function drawRamadan() {
+      const list = DB.all('SELECT * FROM ramadan_periods ORDER BY from_date')
+      $('#st-rlist').innerHTML = list.length ? list.map((r) => `<span class="chip">${ymd(r.from_date)} – ${ymd(r.to_date)} <button type="button" data-rdel="${r.id}" title="حذف">×</button></span>`).join('')
+        : '<span class="hint">لا توجد — أضف فترة رمضان ليتم استخدام أوقاته</span>'
+      $('#st-rlist').querySelectorAll('[data-rdel]').forEach((b) => (b.onclick = async () => {
+        if (!(await UI.confirm('حذف فترة رمضان هذه؟'))) return
+        DB.run('DELETE FROM ramadan_periods WHERE id = ?', [+b.dataset.rdel]); DB.audit('حذف', 'فترات رمضان', b.dataset.rdel); await DB.flush(); drawRamadan()
+      }))
+    }
+    $('#st-radd').onclick = async () => {
+      const f = $('#st-rfrom').value, t = $('#st-rto').value
+      if (!f || !t) return UI.message('اختر تاريخ بداية ونهاية رمضان')
+      if (t < f) return UI.message('تاريخ النهاية قبل تاريخ البداية')
+      if (DB.one('SELECT 1 FROM ramadan_periods WHERE from_date <= ? AND to_date >= ?', [t, f])) return UI.message('هذه الفترة تتداخل مع فترة رمضان موجودة')
+      DB.run('INSERT INTO ramadan_periods (from_date, to_date) VALUES (?, ?)', [f, t]); DB.audit('إضافة', 'فترات رمضان', `${f} – ${t}`); await DB.flush()
+      $('#st-rfrom').value = $('#st-rto').value = ''
+      drawRamadan()
+    }
 
     // the shown day's inputs → state
     function read() {
@@ -98,8 +132,13 @@ function openShiftTimes(group, onSaved) {
     }, 0)
     function draw() {
       view.querySelectorAll('.st-tabs button').forEach((b) => b.classList.toggle('on', +b.dataset.d === cur))
-      const d = days[cur], dis = d.off ? 'disabled' : ''
-      const off = `<label class="off"><input type="checkbox" id="st-off" ${d.off ? 'checked' : ''}> هذا اليوم أجازة</label>`
+      view.querySelectorAll('.st-cal button').forEach((b) => b.classList.toggle('on', b.dataset.c === cal))
+      $('.st-ram').hidden = cal !== 'R'
+      $('#st-user').checked = useR
+      if (cal === 'R') drawRamadan()
+      const locked = cal === 'R' && !useR
+      const d = days[cur], dis = d.off || locked ? 'disabled' : ''
+      const off = `<label class="off"><input type="checkbox" id="st-off" ${d.off ? 'checked' : ''} ${locked ? 'disabled' : ''}> هذا اليوم أجازة</label>`
       $('.st-body').innerHTML = open
         ? `<div class="st-row">${off}<label class="hrs">عدد ساعات العمل <input type="text" id="st-hours" data-time dir="ltr" maxlength="5" value="${UI.esc(d.hours)}" ${dis}></label></div>`
         : `<div class="st-main"><div>
@@ -189,29 +228,33 @@ function openShiftTimes(group, onSaved) {
     async function save() {
       if (WebSync.blocks('shift_groups')) return false
       read()
-      const plan = []
-      for (const [i, d] of days.entries()) {
-        if (d.off) { plan.push(null); continue }
-        if (open) {
-          if (!isHHMM(d.hours) || toMin(d.hours) === 0) { cur = i; draw(); UI.message(`${DAYS[i]}: عدد ساعات العمل بصيغة HH:MM`); return false }
-          plan.push(toMin(d.hours))
-          continue
+      const plans = {}
+      for (const k of useR ? ['Y', 'R'] : ['Y']) {
+        const plan = (plans[k] = [])
+        for (const [i, d] of C[k].days.entries()) {
+          if (d.off) { plan.push(null); continue }
+          if (open) {
+            if (!isHHMM(d.hours) || toMin(d.hours) === 0) { useCal(k); cur = i; draw(); UI.message(`${k === 'R' ? 'رمضان — ' : ''}${DAYS[i]}: عدد ساعات العمل بصيغة HH:MM`); return false }
+            plan.push(toMin(d.hours))
+            continue
+          }
+          const ws = windowsOf(d)
+          if (ws.field) { useCal(k); cur = i; bad[i].add(ws.field); draw(); $(`tr[data-i="${ws.field.split(':')[0]}"] [data-f=${ws.field.split(':')[1]}]`)?.focus(); return false }
+          if (ws.message) { useCal(k); cur = i; draw(); UI.message(ws.message); return false }
+          plan.push(ws)
         }
-        const ws = windowsOf(d)
-        if (ws.field) { cur = i; bad[i].add(ws.field); draw(); $(`tr[data-i="${ws.field.split(':')[0]}"] [data-f=${ws.field.split(':')[1]}]`)?.focus(); return false }
-        if (ws.message) { cur = i; draw(); UI.message(ws.message); return false }
-        plan.push(ws)
       }
+      const plan = plans.Y
       DB.run('BEGIN')
       DB.run('DELETE FROM shift_windows WHERE group_id = ?', [g.id])
       DB.run('DELETE FROM rotation_blocks WHERE group_id = ?', [g.id]) // a former rotating shift becomes a weekly one
-      plan.forEach((p, d) => {
-        if (p == null) return DB.run("INSERT INTO shift_windows (group_id, calendar, slot, window_no, is_off) VALUES (?, 'Y', ?, 1, 1)", [g.id, d])
-        if (open) return DB.run("INSERT INTO shift_windows (group_id, calendar, slot, window_no, is_off, required_min, extends_next_day, day_end) VALUES (?, 'Y', ?, 1, 0, ?, 0, NULL)", [g.id, d, p])
+      for (const [k, pl] of Object.entries(plans)) pl.forEach((p, d) => {
+        if (p == null) return DB.run('INSERT INTO shift_windows (group_id, calendar, slot, window_no, is_off) VALUES (?, ?, ?, 1, 1)', [g.id, k, d])
+        if (open) return DB.run('INSERT INTO shift_windows (group_id, calendar, slot, window_no, is_off, required_min, extends_next_day, day_end) VALUES (?, ?, ?, 1, 0, ?, 0, NULL)', [g.id, k, d, p])
         p.forEach((w) => DB.run(`INSERT INTO shift_windows (group_id, calendar, slot, window_no, is_off, start_in, check_in, late_min, end_in, start_out, early_min, check_out, end_out, extended)
-          VALUES (?, 'Y', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [g.id, d, w.window_no, w.start_in ?? null, w.check_in ?? null, w.late_min, w.end_in ?? null, w.start_out ?? null, w.early_min, w.check_out ?? null, w.end_out ?? null, w.extended]))
+          VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [g.id, k, d, w.window_no, w.start_in ?? null, w.check_in ?? null, w.late_min, w.end_in ?? null, w.start_out ?? null, w.early_min, w.check_out ?? null, w.end_out ?? null, w.extended]))
       })
-      const total = plan.reduce((s, p, d) => s + (p == null ? 0 : open ? p : dayTotal(days[d])), 0)
+      const total = plan.reduce((s, p, d) => s + (p == null ? 0 : open ? p : dayTotal(C.Y.days[d])), 0)
       DB.run('UPDATE shift_groups SET total_minutes = ?, rotational = 0 WHERE id = ?', [total, g.id])
       DB.run('COMMIT')
       DB.audit('حفظ المواعيد', g.name_ar)
@@ -219,12 +262,18 @@ function openShiftTimes(group, onSaved) {
       onSaved?.()
       UI.message('تم حفظ البيانات بنجاح.')
       // show the filled-in punch windows
-      days.forEach((d, i) => { if (!open && plan[i]) plan[i].forEach((w) => Object.assign(d.periods[w.window_no - 1], { si: w.start_in || '', ei: w.end_in || '', so: w.start_out || '', eo: w.end_out || '' })); findAutos(i) })
+      const was = cal
+      for (const [k, pl] of Object.entries(plans)) {
+        useCal(k)
+        days.forEach((d, i) => { if (!open && pl[i]) pl[i].forEach((w) => Object.assign(d.periods[w.window_no - 1], { si: w.start_in || '', ei: w.end_in || '', so: w.start_out || '', eo: w.end_out || '' })); findAutos(i) })
+      }
+      useCal(was)
       draw()
-      saved = JSON.stringify(days)
+      saved = snapshot()
       return true
     }
-    days.forEach((_, i) => findAutos(i))
+    for (const k of ['Y', 'R']) { useCal(k); days.forEach((_, i) => findAutos(i)) }
+    useCal('Y')
     draw()
   })
 }

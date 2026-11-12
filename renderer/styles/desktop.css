@@ -100,7 +100,7 @@
   .win .fields, .dlg .fields { display: grid; grid-template-columns: 130px 1fr; gap: 10px 12px; align-items: center; }
   .band { background: var(--apex-thead); color: var(--apex-text); text-align: center; font-weight: 700; padding: 8px; border-radius: 6px 6px 0 0; }
   /* buttons inside a page's body */
-  .win .body button:not(.toolbar button, .apex-table button, .tb-drop button, .apex-pages button, .x, .st-tabs button, .row-acts button, .dash button, .gm-btns button) {
+  .win .body button:not(.toolbar button, .apex-table button, .tb-drop button, .apex-pages button, .x, .st-tabs button, .st-cal button, .st-ramp .chip button, .row-acts button, .dash button, .gm-btns button) {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 0 14px; border: 1px solid var(--apex-blue-border); border-radius: 4px; background: #fff; color: var(--apex-blue); font: inherit; font-size: 14px; cursor: pointer; }
   .win .body button:hover:not(:disabled) { filter: brightness(.98); }
   .win .body button:disabled { opacity: .5; cursor: not-allowed; }
@@ -198,6 +198,15 @@
   .st-apex .st-group { color: var(--apex-navy); font-weight: 700; text-align: center; font-size: 15px; }
   .st-apex .st-tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--apex-thead); }
   .st-apex .st-tabs button { flex: 1; height: 42px; border: 0; border-radius: 6px 6px 0 0; background: transparent; color: #475569; font: inherit; font-weight: 700; cursor: pointer; }
+  .st-apex .st-cal { display: inline-flex; gap: 4px; background: #eef3f4; border-radius: 10px; padding: 4px; margin: 6px 0 10px; }
+  .st-apex .st-cal button { border: 0; background: transparent; border-radius: 8px; padding: 7px 16px; font: inherit; font-weight: 700; color: #475569; cursor: pointer; }
+  .st-apex .st-cal button.on { background: #fff; color: var(--masar-ink, #1d4d56); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .st-apex .st-ram { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; background: #fff8ec; border: 1px solid #f4d9ab; border-radius: 10px; padding: 10px 14px; margin-bottom: 10px; }
+  .st-apex .st-ramp { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .st-apex .st-ramp .hint { color: #6b7f83; font-size: 12px; }
+  .st-apex .st-ramp .chip { display: inline-flex; gap: 6px; align-items: center; background: #fff; border: 1px solid #e2c48f; border-radius: 99px; padding: 2px 4px 2px 10px; direction: ltr; }
+  .st-apex .st-ramp .chip button { border: 0; background: none; color: #c0392b; font-size: 15px; cursor: pointer; }
+  .st-apex .st-ramp input[type=date] { height: 30px; }
   .st-apex .st-tabs button:hover { background: #fff; }
   .st-apex .st-tabs button.on { background: var(--apex-blue); color: #fff; }
   .st-apex .st-day { background: #fff; border-radius: 10px; box-shadow: rgba(0,0,0,.08) 0 2px 8px; overflow: hidden; }

@@ -79,20 +79,24 @@ const Engine = {
     const groups = Object.fromEntries(DB.all('SELECT * FROM shift_groups').map((g) => [g.id, g]))
     const win = {}
     for (const w of DB.all('SELECT * FROM shift_windows ORDER BY window_no')) ((win[w.group_id] ||= {})[`${w.calendar}:${w.slot}`] ||= []).push(w)
-    return { groups, win }
+    // «رمضان»: inside a Ramadan period a shift with its own Ramadan times uses them (as on the site)
+    const ramadan = DB.all('SELECT * FROM ramadan_periods ORDER BY from_date')
+    const hasRamadanTimes = Object.fromEntries(Object.entries(win).map(([gid, w]) => [gid, Object.keys(w).some((k) => k.startsWith('R:'))]))
+    return { groups, win, ramadan, hasRamadanTimes }
   },
   // Apex: one weekly timetable per shift group
   schedule(cfg, groupId, date) {
     const g = cfg.groups[groupId]
     if (!g) return { kind: 'none' }
     const day = this.DAY_INDEX(date)
-    const rows = cfg.win[groupId]?.[`Y:${day}`] || []
+    const cal = cfg.hasRamadanTimes?.[groupId] && cfg.ramadan?.some((r) => r.from_date <= date && r.to_date >= date) ? 'R' : 'Y'
+    const rows = cfg.win[groupId]?.[`${cal}:${day}`] || []
     if (!rows.length || rows[0].is_off) return { kind: 'off' }
     if (g.open_shift) return { kind: 'open', open: rows[0] }
     // a period without both «تبدأ من» and «إلى» can be saved (as in Apex) but isn't worked
     const usable = rows.filter((w) => w.check_in && w.check_out)
     if (!usable.length) return { kind: 'off' }
-    return { kind: 'windows', windows: this.resolvedFor(cfg, `${groupId}:${day}`, usable) }
+    return { kind: 'windows', windows: this.resolvedFor(cfg, `${groupId}:${cal}:${day}`, usable) }
   },
   resolvedFor(cfg, key, rows) { return ((cfg._resolved ||= {})[key] ||= this.resolveWindows(rows)) },
 
