@@ -747,13 +747,13 @@ await closeWin(rw)
   check('detailed: عدد ساعات الدوام = scheduled hours', c19.at(-5) === sched['2026-09-20'] && /^\d\d:\d\d$/.test(c19.at(-5)), `${c19.at(-5)} vs ${sched['2026-09-20']}`)
   check('detailed: day off → عطلة أسبوعية, no duty hours', c24.at(-1) === 'عطلة أسبوعية' && c24.at(-5) === '', c24.join('|'))
   await closeWin(rw)
-  check('engine: a single punch outside every period still counts as attended', await p.evaluate(async () => {
+  check('engine: a single punch outside every period stays absent (site rule)', await p.evaluate(async () => {
     const code = '1001', d = '2026-09-27'
     const before = Engine.compute({ from: d, to: d }).find((r) => r.emp.code === code)
     DB.run('INSERT INTO punches (emp_code, ts, source) VALUES (?, ?, ?)', [code, `${d} 02:00:00`, 'manual'])
     const after = Engine.compute({ from: d, to: d }).find((r) => r.emp.code === code)
     DB.run('DELETE FROM punches WHERE emp_code = ? AND ts = ?', [code, `${d} 02:00:00`])
-    return before.kind === 'absent' && after.kind === 'present'
+    return before.kind === 'absent' && after.kind === 'absent'
   }))
 }
 // the three restored Apex reports
