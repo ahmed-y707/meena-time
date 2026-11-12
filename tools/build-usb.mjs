@@ -62,6 +62,8 @@ await flipFuses(exe, {
   [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
   [FuseV1Options.EnableNodeCliInspectArguments]: false,
   [FuseV1Options.OnlyLoadAppFromAsar]: true,
+  // with rcedit the exe carries app.asar's hash: a modified app.asar refuses to start
+  [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: !!process.env.USB_RCEDIT,
   [FuseV1Options.EnableCookieEncryption]: true,
   [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
 })
