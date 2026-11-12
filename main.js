@@ -1,6 +1,6 @@
 // Electron main process: one window, the database file in the user's data
 // folder (no XAMPP, no fixed drive), and the licence check.
-const { app, BrowserWindow, ipcMain, Menu, dialog, safeStorage, screen } = require('electron')
+const { app, BrowserWindow, ipcMain, Menu, dialog, screen, session } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { requestCode, verifyLicence } = require('./lib/license')
@@ -29,7 +29,23 @@ const licencePath = () => path.join(dataDir(), 'licence.key')
 // trial build (tools/build-trial.sh bundles trial-build.json): the trial starts on first run, then a code from us is needed
 const TRIAL_BUILD = path.join(__dirname, 'trial-build.json')
 const guard = createGuard({ dataDir, licencePath, buildTrial: fs.existsSync(TRIAL_BUILD) ? (JSON.parse(fs.readFileSync(TRIAL_BUILD, 'utf8')).token || 'invalid') : null })
-app.whenReady().then(() => { guard.checkNetTime(); setInterval(() => guard.checkNetTime(), 30 * 60e3) })
+
+
+// Offline edition: the program never talks to the internet. Chromium's own background services
+// (updates, spell-check downloads, safe-browsing, metrics…) are switched off, and every request a
+// window could make is refused unless it stays on this PC (file:, data:, blob:, devtools:).
+// Fingerprint devices are reached by Node on the local network (lib/zk.js, lib/gate) — not through here.
+for (const sw of ['disable-background-networking', 'disable-component-update', 'disable-domain-reliability', 'no-pings',
+  'disable-sync', 'disable-default-apps', 'no-first-run', 'disable-breakpad', 'metrics-recording-only', 'disable-client-side-phishing-detection', 'disable-field-trial-config', 'no-service-autorun']) app.commandLine.appendSwitch(sw)
+app.commandLine.appendSwitch('disable-features', 'SpellcheckService,MediaRouter,OptimizationHints,Translate,AutofillServerCommunication,CertificateTransparencyComponentUpdater')
+const LOCAL_URL = /^(file|data|blob|devtools|chrome|about):/i
+app.whenReady().then(() => {
+  const ses = session.defaultSession
+  ses.setSpellCheckerEnabled(false)
+  ses.setSpellCheckerLanguages([])
+  ses.setSpellCheckerDictionaryDownloadURL('file:///nonexistent/') // never fetch dictionaries from Google
+  ses.webRequest.onBeforeRequest((d, cb) => cb({ cancel: !LOCAL_URL.test(d.url) }))
+})
 
 let mainWin = null
 function createWindow() {
@@ -41,7 +57,7 @@ function createWindow() {
     title: 'Masar Time',
     backgroundColor: '#edf1f2',
     icon: path.join(__dirname, 'build', 'icon.png'),
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, spellcheck: false },
   }))
   win.maximize()
   // 115 % on wide screens, as msar-erp.com renders (tenant uiScale); Ctrl + / Ctrl − / Ctrl 0 adjust it and the choice is kept
@@ -110,7 +126,6 @@ ipcMain.handle('licence:register', async (_e, code) => {
   const prev = fs.existsSync(licencePath()) ? fs.readFileSync(licencePath(), 'utf8') : null
   fs.mkdirSync(dataDir(), { recursive: true })
   fs.writeFileSync(licencePath(), String(code).trim())
-  await guard.checkNetTime()
   const st = guard.status()
   if (st.locked && prev !== null) fs.writeFileSync(licencePath(), prev) // an already-ended trial code doesn't replace a working one
   return st
@@ -233,47 +248,6 @@ ipcMain.handle('file:pdf', async (e, name, html) => {
 // ── link with the web version (Frappe REST, token auth) ──
 // Kept in its own file (not the database) so backups never carry the API secret.
 // the site link belongs to one database: an extra database starts unlinked
-const webPath = () => { const n = currentDb(); return path.join(dataDir(), n === 'main' ? 'web-link.json' : `web-link-db-${n}.json`) }
-function readWeb() {
-  try {
-    const c = JSON.parse(fs.readFileSync(webPath(), 'utf8'))
-    c.secret = c.enc ? safeStorage.decryptString(Buffer.from(c.secret, 'base64')) : c.secret
-    return c
-  } catch { return null }
-}
-ipcMain.handle('web:config', () => { const c = readWeb(); return c ? { url: c.url, key: c.key, linked: true } : { linked: false } })
-ipcMain.handle('web:setConfig', (_e, cfg) => {
-  if (!cfg) { fs.rmSync(webPath(), { force: true }); return true }
-  const enc = safeStorage.isEncryptionAvailable()
-  const secret = enc ? safeStorage.encryptString(cfg.secret).toString('base64') : cfg.secret
-  fs.mkdirSync(dataDir(), { recursive: true })
-  fs.writeFileSync(webPath(), JSON.stringify({ url: cfg.url.replace(/\/+$/, ''), key: cfg.key, secret, enc }), { mode: 0o600 })
-  return true
-})
-// method GET|POST, p = "/api/..." (query already encoded), body = JSON-able
-ipcMain.handle('web:call', async (_e, method, p, body, override) => {
-  const c = override || readWeb()
-  if (!c) return { error: 'التطبيق غير مرتبط بالموقع' }
-  try {
-    const res = await fetch(c.url.replace(/\/+$/, '') + p, {
-      method, signal: AbortSignal.timeout(30000),
-      headers: { Authorization: `token ${c.key}:${c.secret}`, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    })
-    const text = await res.text()
-    let data = null
-    try { data = JSON.parse(text) } catch {}
-    if (!res.ok) {
-      let msg = data?.exception || data?.message || data?._server_messages || text.slice(0, 200)
-      try { msg = JSON.parse(JSON.parse(data._server_messages)[0]).message } catch {}
-      return { error: res.status === 401 || res.status === 403 ? 'بيانات الربط غير صحيحة أو لا تملك صلاحية' : String(msg).replace(/<[^>]+>/g, ''), status: res.status }
-    }
-    return { data: data?.data ?? data?.message ?? data }
-  } catch (err) {
-    return { error: /timeout|abort/i.test(err.name + err.message) ? 'انتهت مهلة الاتصال بالموقع' : 'تعذّر الاتصال بالموقع — تأكد من الإنترنت ورابط الموقع', offline: true }
-  }
-})
-
 // Print through a hidden window so only the document prints (not the desktop),
 // and a missing/failed printer comes back as a message instead of nothing happening
 ipcMain.handle('print:html', async (e, html) => {
