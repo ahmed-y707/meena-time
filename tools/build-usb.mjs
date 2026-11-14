@@ -29,7 +29,11 @@ const strong = {
   stringArrayWrappersCount: 3, stringArrayWrappersChainedCalls: true, stringArrayWrappersType: 'function', stringArrayThreshold: 1, transformObjectKeys: true,
   unicodeEscapeSequence: false, disableConsoleOutput: true,
 }
-const files = ['main.js', 'licence.js', 'store.js', 'preload.js', 'renderer/app.js']
+// Only the main-process core is obfuscated (that's where the key check and data key live). The
+// renderer side (preload.js, renderer/app.js) is left plain: under the window's strict CSP the
+// heavy obfuscator runtime can fail to start, and since the whole UI is hidden until app.js runs,
+// that shows as a blank white window on some Windows PCs. No secret lives in the renderer.
+const files = ['main.js', 'licence.js', 'store.js']
 for (const f of files) {
   const p = path.join(STAGE, f)
   const target = f.startsWith('renderer/') ? 'browser' : 'node'
